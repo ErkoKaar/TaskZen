@@ -13,9 +13,11 @@ import {
 import { SiteHeader } from "@/components/site-header"
 import { TasksNavTabs } from "@/components/tasks/nav-tabs"
 import { ViewTabs, type ViewKey } from "@/components/tasks/view-tabs"
+import { cn } from "@/lib/utils"
 
 export default function TasksPage() {
   const [view, setView] = useState<ViewKey>("week")
+  const [selectedDate, setSelectedDate] = useState(() => new Date())
   const { state, addTask, toggleTask, deleteTask, toggleHabit } = useStore()
 
   const range = useMemo(() => getRange(view, state), [view, state])
@@ -34,19 +36,42 @@ export default function TasksPage() {
         <TasksNavTabs />
       </SiteHeader>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tasks</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {range.label} · {state.tasks.length} tasks · {state.habits.length} habits
-              </p>
-            </div>
-            <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
+      <main
+        className={cn(
+          "mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12",
+          view === "week" && "pb-28",
+        )}
+      >
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tasks</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {range.label} · {state.tasks.length} tasks · {state.habits.length} habits
+            </p>
           </div>
+          <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
+        </div>
 
-          <div className="space-y-3">
+        {view === "week" ? (
+          <div className="flex flex-1 items-center justify-center py-6">
+            <div className="w-full max-w-lg sm:max-w-2xl">
+              <DayCard
+                date={selectedDate}
+                tasks={state.tasks.filter((t) => t.date === fmtDate(selectedDate))}
+                habits={state.habits}
+                isHabitDone={(habitId) =>
+                  !!state.habitLogs[`${habitId}:${fmtDate(selectedDate)}`]
+                }
+                onAddTask={(input) => addTask({ ...input, date: fmtDate(selectedDate) })}
+                onToggleTask={toggleTask}
+                onDeleteTask={deleteTask}
+                onToggleHabit={(habitId) => toggleHabit(habitId, fmtDate(selectedDate))}
+                forceOpen
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="mt-6 space-y-3">
             {days.map((day) => (
               <DayCard
                 key={fmtDate(day)}
@@ -58,13 +83,71 @@ export default function TasksPage() {
                 onToggleTask={toggleTask}
                 onDeleteTask={deleteTask}
                 onToggleHabit={(habitId) => toggleHabit(habitId, fmtDate(day))}
-                compact={view !== "week"}
+                compact
               />
             ))}
           </div>
-        </div>
+        )}
       </main>
+
+      {view === "week" && (
+        <WeekDayFooter
+          days={days}
+          selected={selectedDate}
+          onSelect={setSelectedDate}
+        />
+      )}
     </div>
+  )
+}
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+function WeekDayFooter({
+  days,
+  selected,
+  onSelect,
+}: {
+  days: Date[]
+  selected: Date
+  onSelect: (date: Date) => void
+}) {
+  const today = fmtDate(new Date())
+  return (
+    <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-md">
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-1 px-4 py-3 sm:px-6">
+        {days.map((day) => {
+          const isSelected = fmtDate(day) === fmtDate(selected)
+          const isToday = fmtDate(day) === today
+          return (
+            <button
+              key={fmtDate(day)}
+              type="button"
+              onClick={() => onSelect(day)}
+              className={cn(
+                "flex flex-1 flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors sm:flex-initial sm:px-4",
+                isSelected
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+              )}
+            >
+              <span>{WEEKDAY_SHORT[day.getDay()]}</span>
+              <span className="flex items-center gap-1 text-[10px] tabular-nums">
+                {day.getDate()}
+                {isToday && (
+                  <span
+                    className={cn(
+                      "h-1 w-1 rounded-full",
+                      isSelected ? "bg-primary-foreground" : "bg-primary",
+                    )}
+                  />
+                )}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </footer>
   )
 }
 
@@ -78,6 +161,7 @@ function DayCard({
   onDeleteTask,
   onToggleHabit,
   compact,
+  forceOpen,
 }: {
   date: Date
   tasks: ReturnType<typeof useStore>["state"]["tasks"]
@@ -88,11 +172,13 @@ function DayCard({
   onDeleteTask: (id: string) => void
   onToggleHabit: (id: string) => void
   compact?: boolean
+  forceOpen?: boolean
 }) {
   const today = fmtDate(new Date())
   const isToday = fmtDate(date) === today
   const [title, setTitle] = useState("")
   const [open, setOpen] = useState(!compact && isToday)
+  const isOpen = forceOpen || open
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -103,33 +189,45 @@ function DayCard({
 
   const dayLabel = fmtDayLabel(date)
 
+  const header = (
+    <>
+      <div className="flex items-baseline gap-3">
+        <span className={`text-sm font-medium ${isToday ? "text-foreground" : "text-muted-foreground"}`}>
+          {dayLabel}
+        </span>
+        {isToday && (
+          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
+            Today
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span>{tasks.filter((t) => t.done).length}/{tasks.length} tasks</span>
+        <span>·</span>
+        <span>
+          {habits.filter((h) => isHabitDone(h.id)).length}/{habits.length} habits
+        </span>
+      </div>
+    </>
+  )
+
   return (
     <div className="rounded-xl border border-border bg-card">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-5 py-3 text-left"
-      >
-        <div className="flex items-baseline gap-3">
-          <span className={`text-sm font-medium ${isToday ? "text-foreground" : "text-muted-foreground"}`}>
-            {dayLabel}
-          </span>
-          {isToday && (
-            <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
-              Today
-            </span>
-          )}
+      {forceOpen ? (
+        <div className="flex w-full items-center justify-between px-5 py-3 text-left">
+          {header}
         </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{tasks.filter((t) => t.done).length}/{tasks.length} tasks</span>
-          <span>·</span>
-          <span>
-            {habits.filter((h) => isHabitDone(h.id)).length}/{habits.length} habits
-          </span>
-        </div>
-      </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex w-full items-center justify-between px-5 py-3 text-left"
+        >
+          {header}
+        </button>
+      )}
 
-      {open && (
+      {isOpen && (
         <div className="border-t border-border px-5 py-4 space-y-4">
           {/* Habits */}
           {habits.length > 0 && (
@@ -222,4 +320,3 @@ function CheckBox({ checked, onClick }: { checked: boolean; onClick: () => void 
     </button>
   )
 }
-

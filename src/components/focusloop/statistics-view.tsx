@@ -1,13 +1,9 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { Award, Clock, Flame, Medal, Trophy } from "lucide-react"
-import {
-  TIME_RANGES,
-  type TimeRange,
-  getStats,
-  formatDuration,
-} from "@/lib/focusloop/data"
+import { TIME_RANGES, type TimeRange, formatDuration } from "@/lib/focusloop/data"
+import { getStats, type ActivityStat } from "@/lib/focusloop/sessions"
 import { cn } from "@/lib/utils"
 
 const MEDALS = [
@@ -18,7 +14,13 @@ const MEDALS = [
 
 export function StatisticsView() {
   const [range, setRange] = useState<TimeRange>("week")
-  const stats = useMemo(() => getStats(range), [range])
+  const [stats, setStats] = useState<ActivityStat[]>([])
+
+  useEffect(() => {
+    getStats(range)
+      .then(setStats)
+      .catch((err) => console.error("Failed to load statistics", err))
+  }, [range])
 
   const total = stats.reduce((sum, s) => sum + s.minutes, 0)
   const max = Math.max(...stats.map((s) => s.minutes), 1)

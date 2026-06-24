@@ -12,14 +12,16 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TimerRing } from "@/components/focusloop/timer-ring"
-import { ACTIVITIES, type Activity, formatDuration } from "@/lib/focusloop/data"
+import { formatDuration } from "@/lib/focusloop/data"
+import { listActivities, createActivity, type Activity } from "@/lib/focusloop/activities"
+import { recordSession } from "@/lib/focusloop/sessions"
 import { cn } from "@/lib/utils"
 
 type Phase = "idle" | "focus" | "rest" | "done"
 
 export function FocusTimer() {
-  const [activities, setActivities] = useState<Activity[]>(ACTIVITIES)
-  const [activity, setActivity] = useState<Activity>(ACTIVITIES[0])
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [activity, setActivity] = useState<Activity | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [newActivity, setNewActivity] = useState("")
 
@@ -34,6 +36,18 @@ export function FocusTimer() {
   const [focusedSeconds, setFocusedSeconds] = useState(0)
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const sessionStartRef = useRef<Date | null>(null)
+  const focusedSecondsRef = useRef(0)
+  const finishedRef = useRef(false)
+
+  useEffect(() => {
+    listActivities()
+      .then((loaded) => {
+        setActivities(loaded)
+        setActivity((current) => current ?? loaded[0] ?? null)
+      })
+      .catch((err) => console.error("Failed to load activities", err))
+  }, [])
 
   const totalForPhase =
     phase === "rest" ? restMin * 60 : focusMin * 60
@@ -48,7 +62,10 @@ export function FocusTimer() {
     if (!running) return
     intervalRef.current = setInterval(() => {
       setSecondsLeft((prev) => {
-        if (phase === "focus") setFocusedSeconds((f) => f + 1)
+        if (phase === "focus") {
+          focusedSecondsRef.current += 1
+          setFocusedSeconds(focusedSecondsRef.current)
+        }
         if (prev <= 1) {
           handlePhaseEnd()
           return 0
@@ -82,6 +99,9 @@ export function FocusTimer() {
   }
 
   function start() {
+    sessionStartRef.current = new Date()
+    focusedSecondsRef.current = 0
+    finishedRef.current = false
     setPhase("focus")
     setRunning(true)
     setCurrentRound(1)
@@ -90,8 +110,18 @@ export function FocusTimer() {
   }
 
   function finish() {
+    if (finishedRef.current) return
+    finishedRef.current = true
     setRunning(false)
     setPhase("done")
+    if (activity && sessionStartRef.current) {
+      recordSession({
+        activityId: activity.id,
+        focusedSeconds: focusedSecondsRef.current,
+        rounds: currentRound,
+        startedAt: sessionStartRef.current,
+      }).catch((err) => console.error("Failed to record session", err))
+    }
   }
 
   function cancel() {
@@ -112,15 +142,22 @@ export function FocusTimer() {
   function addActivity() {
     const name = newActivity.trim()
     if (!name) return
-    const created: Activity = {
-      id: name.toLowerCase().replace(/\s+/g, "-"),
-      name,
-      color: "var(--chart-3)",
-    }
-    setActivities((prev) => [created, ...prev])
-    setActivity(created)
-    setNewActivity("")
-    setPickerOpen(false)
+    createActivity({ name, color: "var(--chart-3)" })
+      .then((created) => {
+        setActivities((prev) => [created, ...prev])
+        setActivity(created)
+        setNewActivity("")
+        setPickerOpen(false)
+      })
+      .catch((err) => console.error("Failed to create activity", err))
+  }
+
+  if (!activity) {
+    return (
+      <p className="mx-auto text-center text-sm text-muted-foreground">
+        Loading activities…
+      </p>
+    )
   }
 
   const configuring = phase === "idle"
