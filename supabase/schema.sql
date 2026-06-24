@@ -40,3 +40,53 @@ insert into activities (name, color) values
   ('Design', 'var(--chart-2)'),
   ('Music Practice', 'var(--chart-3)'),
   ('Language Learning', 'var(--chart-4)');
+
+-- Task Manager schema: tasks, habits, daily habit-completion logs.
+-- No auth yet, so all data is shared/public — tighten policies once login is added.
+
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  date date not null,
+  done boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists habits (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists habit_logs (
+  habit_id uuid not null references habits(id) on delete cascade,
+  date date not null,
+  primary key (habit_id, date)
+);
+
+alter table tasks enable row level security;
+alter table habits enable row level security;
+alter table habit_logs enable row level security;
+
+create policy "Public can read tasks" on tasks
+  for select using (true);
+create policy "Public can insert tasks" on tasks
+  for insert with check (true);
+create policy "Public can update tasks" on tasks
+  for update using (true);
+create policy "Public can delete tasks" on tasks
+  for delete using (true);
+
+create policy "Public can read habits" on habits
+  for select using (true);
+create policy "Public can insert habits" on habits
+  for insert with check (true);
+create policy "Public can delete habits" on habits
+  for delete using (true);
+
+create policy "Public can read habit_logs" on habit_logs
+  for select using (true);
+create policy "Public can insert habit_logs" on habit_logs
+  for insert with check (true);
+create policy "Public can delete habit_logs" on habit_logs
+  for delete using (true);

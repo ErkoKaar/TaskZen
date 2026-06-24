@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 export type Task = {
   id: string
@@ -27,127 +28,189 @@ export type StoreState = {
   habitLogs: HabitLog
 }
 
-const STORAGE_KEY = "taskmgr.v1"
-
 const initialState: StoreState = {
   tasks: [],
   habits: [],
   habitLogs: {},
 }
 
-type Listener = () => void
-const listeners = new Set<Listener>()
-let state: StoreState = initialState
-let loaded = false
-
-function load() {
-  if (loaded || typeof window === "undefined") return
-  loaded = true
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (raw) state = { ...initialState, ...JSON.parse(raw) }
-  } catch {}
-}
-
-function persist() {
-  if (typeof window === "undefined") return
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {}
-}
-
-function setState(updater: (s: StoreState) => StoreState) {
-  state = updater(state)
-  persist()
-  listeners.forEach((l) => l())
-}
-
 export function useStore() {
-  load()
-  const [, setTick] = useState(0)
+  const [state, setState] = useState<StoreState>(initialState)
+
   useEffect(() => {
-    const l = () => setTick((t) => t + 1)
-    listeners.add(l)
+    let active = true
+    const supabase = createClient()
+
+    async function load() {
+      const [tasksRes, habitsRes, logsRes] = await Promise.all([
+        supabase
+          .from("tasks")
+          .select("id, title, date, done, created_at")
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("habits")
+          .select("id, name, created_at")
+          .order("created_at", { ascending: true }),
+        supabase.from("habit_logs").select("habit_id, date"),
+      ])
+      if (!active) return
+      if (tasksRes.error) throw tasksRes.error
+      if (habitsRes.error) throw habitsRes.error
+      if (logsRes.error) throw logsRes.error
+
+      const habitLogs: HabitLog = {}
+      for (const row of logsRes.data ?? []) {
+        habitLogs[`${row.habit_id}:${row.date}`] = true
+      }
+
+      setState({
+        tasks: (tasksRes.data ?? []).map((t) => ({
+          id: t.id,
+          title: t.title,
+          date: t.date,
+          done: t.done,
+          createdAt: new Date(t.created_at).getTime(),
+        })),
+        habits: (habitsRes.data ?? []).map((h) => ({
+          id: h.id,
+          name: h.name,
+          createdAt: new Date(h.created_at).getTime(),
+        })),
+        habitLogs,
+      })
+    }
+
+    load().catch((err) => console.error("Failed to load task data", err))
     return () => {
-      listeners.delete(l)
+      active = false
     }
   }, [])
 
-  const addTask = useCallback(
-    (input: { title: string; date: string }) =>
-      setState((s) => ({
-        ...s,
-        tasks: [
-          ...s.tasks,
-          {
-            id: crypto.randomUUID(),
-            title: input.title,
-            date: input.date,
-            done: false,
-            createdAt: Date.now(),
-          },
-        ],
-      })),
-    [],
-  )
-
-  const toggleTask = useCallback(
-    (id: string) =>
-      setState((s) => ({
-        ...s,
-        tasks: s.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-      })),
-    [],
-  )
-
-  const deleteTask = useCallback(
-    (id: string) =>
-      setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) })),
-    [],
-  )
-
-  const addHabit = useCallback(
-    (input: { name: string }) =>
-      setState((s) => ({
-        ...s,
-        habits: [
-          ...s.habits,
-          {
-            id: crypto.randomUUID(),
-            name: input.name,
-            createdAt: Date.now(),
-          },
-        ],
-      })),
-    [],
-  )
-
-  const deleteHabit = useCallback(
-    (id: string) =>
-      setState((s) => {
-        const newLogs = { ...s.habitLogs }
-        Object.keys(newLogs).forEach((k) => {
-          if (k.startsWith(`${id}:`)) delete newLogs[k]
-        })
-        return {
+  const addTask = useCallback((input: { title: string; date: string }) => {
+    const supabase = createClient()
+    supabase
+      .from("tasks")
+      .insert({ title: input.title, date: input.date })
+      .select("id, title, date, done, created_at")
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) return console.error("Failed to add task", error)
+        setState((s) => ({
           ...s,
-          habits: s.habits.filter((h) => h.id !== id),
-          habitLogs: newLogs,
-        }
-      }),
-    [],
-  )
+          tasks: [
+            ...s.tasks,
+            {
+              id: data.id,
+              title: data.title,
+              date: data.date,
+              done: data.done,
+              createdAt: new Date(data.created_at).getTime(),
+            },
+          ],
+        }))
+      })
+  }, [])
+
+  const toggleTask = useCallback((id: string) => {
+    const task = state.tasks.find((t) => t.id === id)
+    if (!task) return
+    const done = !task.done
+    setState((s) => ({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, done } : t)) }))
+    const supabase = createClient()
+    supabase
+      .from("tasks")
+      .update({ done })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to update task", error)
+      })
+  }, [state.tasks])
+
+  const deleteTask = useCallback((id: string) => {
+    setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }))
+    const supabase = createClient()
+    supabase
+      .from("tasks")
+      .delete()
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to delete task", error)
+      })
+  }, [])
+
+  const addHabit = useCallback((input: { name: string }) => {
+    const supabase = createClient()
+    supabase
+      .from("habits")
+      .insert({ name: input.name })
+      .select("id, name, created_at")
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) return console.error("Failed to add habit", error)
+        setState((s) => ({
+          ...s,
+          habits: [
+            ...s.habits,
+            { id: data.id, name: data.name, createdAt: new Date(data.created_at).getTime() },
+          ],
+        }))
+      })
+  }, [])
+
+  const deleteHabit = useCallback((id: string) => {
+    setState((s) => {
+      const newLogs = { ...s.habitLogs }
+      Object.keys(newLogs).forEach((k) => {
+        if (k.startsWith(`${id}:`)) delete newLogs[k]
+      })
+      return {
+        ...s,
+        habits: s.habits.filter((h) => h.id !== id),
+        habitLogs: newLogs,
+      }
+    })
+    const supabase = createClient()
+    supabase
+      .from("habits")
+      .delete()
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to delete habit", error)
+      })
+  }, [])
 
   const toggleHabit = useCallback(
-    (habitId: string, date: string) =>
+    (habitId: string, date: string) => {
+      const key = `${habitId}:${date}`
+      const wasSet = !!state.habitLogs[key]
+
       setState((s) => {
-        const key = `${habitId}:${date}`
         const newLogs = { ...s.habitLogs }
-        if (newLogs[key]) delete newLogs[key]
+        if (wasSet) delete newLogs[key]
         else newLogs[key] = true
         return { ...s, habitLogs: newLogs }
-      }),
-    [],
+      })
+
+      const supabase = createClient()
+      if (wasSet) {
+        supabase
+          .from("habit_logs")
+          .delete()
+          .eq("habit_id", habitId)
+          .eq("date", date)
+          .then(({ error }) => {
+            if (error) console.error("Failed to unmark habit", error)
+          })
+      } else {
+        supabase
+          .from("habit_logs")
+          .insert({ habit_id: habitId, date })
+          .then(({ error }) => {
+            if (error) console.error("Failed to mark habit", error)
+          })
+      }
+    },
+    [state.habitLogs],
   )
 
   return {
