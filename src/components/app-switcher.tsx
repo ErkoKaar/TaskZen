@@ -3,8 +3,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CheckSquare, ChevronDown, Timer } from "lucide-react"
+import { CheckSquare, ChevronDown, LogOut, Timer } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { signOut } from "@/lib/auth/actions"
 
 const APPS = [
   { id: "focusloop", label: "FocusLoop", href: "/", icon: Timer },
@@ -57,6 +58,16 @@ export function AppSwitcher() {
               {app.label}
             </Link>
           ))}
+          <div className="my-1 border-t border-border" />
+          <form action={signOut}>
+            <button
+              type="submit"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
+          </form>
         </div>
       )}
     </div>
