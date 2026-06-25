@@ -12,9 +12,12 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TimerRing } from "@/components/focusloop/timer-ring"
+import { NotificationToggle } from "@/components/focusloop/notification-toggle"
 import { formatDuration } from "@/lib/focusloop/data"
 import { listActivities, createActivity, type Activity } from "@/lib/focusloop/activities"
 import { recordSession } from "@/lib/focusloop/sessions"
+import { playFocusChime, playRestChime, playCompleteChime } from "@/lib/focusloop/sound"
+import { rescheduleNotifications, computeSchedule } from "@/lib/notifications/notify"
 import { cn } from "@/lib/utils"
 
 type Phase = "idle" | "focus" | "rest" | "done"
@@ -47,6 +50,9 @@ export function FocusTimer() {
         setActivity((current) => current ?? loaded[0] ?? null)
       })
       .catch((err) => console.error("Failed to load activities", err))
+    // Clear any notifications left scheduled by a session that was abandoned
+    // by refreshing/closing the page instead of cancelling.
+    rescheduleNotifications([])
   }, [])
 
   const totalForPhase =
@@ -80,18 +86,17 @@ export function FocusTimer() {
   }, [running, phase, currentRound])
 
   function handlePhaseEnd() {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      // Real apps fire a Service Worker push here; prototype uses a local notice.
-    }
     if (phase === "focus") {
       const isLastRound = currentRound >= rounds
       if (isLastRound) {
         finish()
       } else {
+        playRestChime()
         setPhase("rest")
         setSecondsLeft(restMin * 60)
       }
     } else if (phase === "rest") {
+      playFocusChime()
       setCurrentRound((r) => r + 1)
       setPhase("focus")
       setSecondsLeft(focusMin * 60)
@@ -107,6 +112,28 @@ export function FocusTimer() {
     setCurrentRound(1)
     setFocusedSeconds(0)
     setSecondsLeft(focusMin * 60)
+    rescheduleNotifications(
+      computeSchedule({
+        phase: "focus",
+        secondsLeft: focusMin * 60,
+        currentRound: 1,
+        rounds,
+        focusMin,
+        restMin,
+      }),
+    )
+  }
+
+  function pause() {
+    setRunning(false)
+    rescheduleNotifications([])
+  }
+
+  function resume() {
+    setRunning(true)
+    rescheduleNotifications(
+      computeSchedule({ phase: phase as "focus" | "rest", secondsLeft, currentRound, rounds, focusMin, restMin }),
+    )
   }
 
   function finish() {
@@ -114,6 +141,7 @@ export function FocusTimer() {
     finishedRef.current = true
     setRunning(false)
     setPhase("done")
+    playCompleteChime()
     if (activity && sessionStartRef.current) {
       recordSession({
         activityId: activity.id,
@@ -129,6 +157,7 @@ export function FocusTimer() {
     setPhase("idle")
     setCurrentRound(1)
     setSecondsLeft(focusMin * 60)
+    rescheduleNotifications([])
   }
 
   function reset() {
@@ -270,7 +299,7 @@ export function FocusTimer() {
               size="lg"
               variant="secondary"
               className="h-12 flex-1 gap-2"
-              onClick={() => setRunning((r) => !r)}
+              onClick={running ? pause : resume}
             >
               {running ? (
                 <>
@@ -319,6 +348,7 @@ export function FocusTimer() {
             <span className="text-sm font-medium text-foreground">Rounds</span>
             <Stepper value={rounds} min={1} max={12} onChange={setRounds} />
           </div>
+          <NotificationToggle />
           <p className="text-xs leading-relaxed text-muted-foreground">
             The final round ends after focus — no rest. Only focused time is
             saved to your statistics.
