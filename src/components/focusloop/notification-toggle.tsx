@@ -20,7 +20,8 @@ export function NotificationToggle() {
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return
     setSupported(true)
-    navigator.serviceWorker.register("/sw.js").then(async (registration) => {
+    // RegisterServiceWorker (in the root layout) handles registration.
+    navigator.serviceWorker.ready.then(async (registration) => {
       const sub = await registration.pushManager.getSubscription()
       setSubscribed(!!sub)
     })
