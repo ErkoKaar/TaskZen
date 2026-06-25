@@ -11,7 +11,7 @@ export default async function RegisterPage({
 }) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
-  if (data.user) redirect("/")
+  if (data.user) redirect("/tasks")
 
   const { error } = await searchParams
 
@@ -38,6 +38,22 @@ export default async function RegisterPage({
         )}
 
         <form action={signUp} className="mt-6 space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="username" className="text-sm font-medium text-foreground">
+              Username
+            </label>
+            <input
+              id="username"
+              name="username"
+              type="text"
+              required
+              minLength={3}
+              pattern="[A-Za-z0-9_]+"
+              title="Letters, numbers, and underscores only"
+              autoComplete="username"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
           <div className="space-y-1.5">
             <label htmlFor="email" className="text-sm font-medium text-foreground">
               Email

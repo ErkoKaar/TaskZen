@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { CheckSquare, ChevronDown, LogOut, Timer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { signOut } from "@/lib/auth/actions"
+import { createClient } from "@/lib/supabase/client"
 
 const APPS = [
   { id: "focusloop", label: "FocusLoop", href: "/", icon: Timer },
@@ -15,8 +16,24 @@ const APPS = [
 export function AppSwitcher() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [username, setUsername] = useState<string | null>(null)
   const current =
     APPS.find((a) => a.href !== "/" && pathname.startsWith(a.href)) ?? APPS[0]
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) return
+      supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", data.user.id)
+        .maybeSingle()
+        .then(({ data: profile }) => {
+          if (profile) setUsername(profile.username)
+        })
+    })
+  }, [])
 
   return (
     <div className="relative">
@@ -30,7 +47,7 @@ export function AppSwitcher() {
         </div>
         <div className="text-left leading-tight">
           <p className="text-sm font-semibold text-foreground">{current.label}</p>
-          <p className="text-xs text-muted-foreground">Demo · maria</p>
+          <p className="text-xs text-muted-foreground">{username ?? "…"}</p>
         </div>
         <ChevronDown
           className={cn(

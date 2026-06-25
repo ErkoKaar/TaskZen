@@ -11,7 +11,7 @@ export default async function LoginPage({
 }) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
-  if (data.user) redirect("/")
+  if (data.user) redirect("/tasks")
 
   const { error, registered } = await searchParams
 
@@ -44,15 +44,15 @@ export default async function LoginPage({
 
         <form action={signIn} className="mt-6 space-y-4">
           <div className="space-y-1.5">
-            <label htmlFor="email" className="text-sm font-medium text-foreground">
-              Email
+            <label htmlFor="username" className="text-sm font-medium text-foreground">
+              Username
             </label>
             <input
-              id="email"
-              name="email"
-              type="email"
+              id="username"
+              name="username"
+              type="text"
               required
-              autoComplete="email"
+              autoComplete="username"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
