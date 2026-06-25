@@ -15,6 +15,7 @@ export type Habit = {
   id: string
   name: string
   createdAt: number
+  archivedAt: number | null
 }
 
 export type HabitLog = {
@@ -49,7 +50,7 @@ export function useStore() {
           .order("created_at", { ascending: true }),
         supabase
           .from("habits")
-          .select("id, name, created_at")
+          .select("id, name, created_at, archived_at")
           .order("created_at", { ascending: true }),
         supabase.from("habit_logs").select("habit_id, date"),
       ])
@@ -75,6 +76,7 @@ export function useStore() {
           id: h.id,
           name: h.name,
           createdAt: new Date(h.created_at).getTime(),
+          archivedAt: h.archived_at ? new Date(h.archived_at).getTime() : null,
         })),
         habitLogs,
       })
@@ -151,12 +153,52 @@ export function useStore() {
           ...s,
           habits: [
             ...s.habits,
-            { id: data.id, name: data.name, createdAt: new Date(data.created_at).getTime() },
+            {
+              id: data.id,
+              name: data.name,
+              createdAt: new Date(data.created_at).getTime(),
+              archivedAt: null,
+            },
           ],
         }))
       })
   }, [])
 
+  // Soft delete: hides the habit from the active list and from future days,
+  // but keeps its history (habit_logs, statistics) intact. Reversible.
+  const archiveHabit = useCallback((id: string) => {
+    const archivedAt = Date.now()
+    setState((s) => ({
+      ...s,
+      habits: s.habits.map((h) => (h.id === id ? { ...h, archivedAt } : h)),
+    }))
+    const supabase = createClient()
+    supabase
+      .from("habits")
+      .update({ archived_at: new Date(archivedAt).toISOString() })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to archive habit", error)
+      })
+  }, [])
+
+  const restoreHabit = useCallback((id: string) => {
+    setState((s) => ({
+      ...s,
+      habits: s.habits.map((h) => (h.id === id ? { ...h, archivedAt: null } : h)),
+    }))
+    const supabase = createClient()
+    supabase
+      .from("habits")
+      .update({ archived_at: null })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to restore habit", error)
+      })
+  }, [])
+
+  // Permanent delete: removes the habit and all of its history everywhere
+  // (habit_logs cascades). Cannot be undone — only call after confirming.
   const deleteHabit = useCallback((id: string) => {
     setState((s) => {
       const newLogs = { ...s.habitLogs }
@@ -219,6 +261,8 @@ export function useStore() {
     toggleTask,
     deleteTask,
     addHabit,
+    archiveHabit,
+    restoreHabit,
     deleteHabit,
     toggleHabit,
   }
@@ -235,6 +279,14 @@ export function fmtDate(d: Date): string {
 export function parseDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number)
   return new Date(y, m - 1, d)
+}
+
+// A habit only shows up — and only counts toward stats — on days between
+// when it was created and when it was archived (inclusive on both ends).
+export function isHabitApplicable(habit: Habit, date: string): boolean {
+  if (fmtDate(new Date(habit.createdAt)) > date) return false
+  if (habit.archivedAt && fmtDate(new Date(habit.archivedAt)) < date) return false
+  return true
 }
 
 export function startOfWeek(d: Date): Date {

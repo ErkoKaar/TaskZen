@@ -12,7 +12,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { fmtDate, fmtShort, getRange, parseDate, useStore } from "@/lib/tasks/store"
+import {
+  fmtDate,
+  fmtShort,
+  getRange,
+  isHabitApplicable,
+  parseDate,
+  useStore,
+} from "@/lib/tasks/store"
 import { SiteHeader } from "@/components/site-header"
 import { TasksNavTabs } from "@/components/tasks/nav-tabs"
 import { ViewTabs, type ViewKey } from "@/components/tasks/view-tabs"
@@ -31,11 +38,12 @@ export default function StatisticsPage() {
     const days: { date: string; label: string; habits: number; tasks: number }[] = []
     const start = new Date(range.start)
     const end = new Date(range.end)
-    const totalHabits = state.habits.length || 1
     const weekdayShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const date = fmtDate(d)
-      const habitsDone = state.habits.filter(
+      // Only count habits that existed (and weren't yet archived) on this day.
+      const applicableHabits = state.habits.filter((h) => isHabitApplicable(h, date))
+      const habitsDone = applicableHabits.filter(
         (h) => !!state.habitLogs[`${h.id}:${date}`],
       ).length
       const tasksDone = state.tasks.filter((t) => t.date === date && t.done).length
@@ -45,7 +53,7 @@ export default function StatisticsPage() {
           view === "year" || view === "all"
             ? fmtShort(new Date(d))
             : weekdayShort[d.getDay()],
-        habits: Math.round((habitsDone / totalHabits) * 100),
+        habits: Math.round((habitsDone / (applicableHabits.length || 1)) * 100),
         tasks: tasksDone,
       })
     }
@@ -65,11 +73,19 @@ export default function StatisticsPage() {
     [state.habitLogs, range],
   )
 
-  const tasksInRange = state.tasks.filter((t) => inRange(t.date))
-
-  const possible =
-    state.habits.length *
-    (Math.round((range.end.getTime() - range.start.getTime()) / 86400000) + 1)
+  // For each habit, only count the days within range it was actually active for —
+  // a habit created on Wednesday couldn't have been done on Monday/Tuesday, and
+  // an archived habit's history stops counting toward future days.
+  const possible = state.habits.reduce((sum, h) => {
+    const createdDate = parseDate(fmtDate(new Date(h.createdAt)))
+    const effectiveStart = createdDate > range.start ? createdDate : range.start
+    const archivedDate = h.archivedAt ? parseDate(fmtDate(new Date(h.archivedAt))) : null
+    const effectiveEnd = archivedDate && archivedDate < range.end ? archivedDate : range.end
+    if (effectiveStart > effectiveEnd) return sum
+    const days =
+      Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 86400000) + 1
+    return sum + days
+  }, 0)
   const completion =
     possible > 0 ? Math.round((habitChecksInRange.length / possible) * 100) : 0
 
@@ -115,12 +131,12 @@ export default function StatisticsPage() {
               value={`${completion}%`}
               hint={`${habitChecksInRange.length} done`}
             />
+            <KPI label="Tasks completed" value={`${completedTasks.length}`} />
             <KPI
-              label="Tasks completed"
-              value={`${completedTasks.length}`}
-              hint={`of ${tasksInRange.length}`}
+              label="Active habits"
+              value={`${state.habits.filter((h) => !h.archivedAt).length}`}
+              hint="tracked"
             />
-            <KPI label="Active habits" value={`${state.habits.length}`} hint="tracked" />
             <KPI
               label="Habits completed"
               value={`${habitChecksInRange.length}`}

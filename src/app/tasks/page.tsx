@@ -5,6 +5,7 @@ import { Check, Plus, Trash2 } from "lucide-react"
 import {
   fmtDate,
   fmtDayLabel,
+  isHabitApplicable,
   rangeDates,
   startOfWeek,
   useStore,
@@ -46,19 +47,22 @@ export default function TasksPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tasks</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {range.label} · {state.tasks.length} tasks · {state.habits.length} habits
+              {range.label} · {state.tasks.length} tasks ·{" "}
+              {state.habits.filter((h) => !h.archivedAt).length} habits
             </p>
           </div>
           <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
         </div>
 
         {view === "week" ? (
-          <div className="flex flex-1 items-center justify-center py-6">
+          <div className="mt-6 flex flex-col items-center gap-6">
             <div className="w-full max-w-lg sm:max-w-2xl">
               <DayCard
                 date={selectedDate}
                 tasks={state.tasks.filter((t) => t.date === fmtDate(selectedDate))}
-                habits={state.habits}
+                habits={state.habits.filter((h) =>
+                  isHabitApplicable(h, fmtDate(selectedDate)),
+                )}
                 isHabitDone={(habitId) =>
                   !!state.habitLogs[`${habitId}:${fmtDate(selectedDate)}`]
                 }
@@ -69,6 +73,14 @@ export default function TasksPage() {
                 forceOpen
               />
             </div>
+            <div className="w-full max-w-lg sm:max-w-2xl">
+              <WeekOverview
+                days={days}
+                state={state}
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+              />
+            </div>
           </div>
         ) : (
           <div className="mt-6 space-y-3">
@@ -77,7 +89,7 @@ export default function TasksPage() {
                 key={fmtDate(day)}
                 date={day}
                 tasks={state.tasks.filter((t) => t.date === fmtDate(day))}
-                habits={state.habits}
+                habits={state.habits.filter((h) => isHabitApplicable(h, fmtDate(day)))}
                 isHabitDone={(habitId) => !!state.habitLogs[`${habitId}:${fmtDate(day)}`]}
                 onAddTask={(input) => addTask({ ...input, date: fmtDate(day) })}
                 onToggleTask={toggleTask}
@@ -102,6 +114,67 @@ export default function TasksPage() {
 }
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+function WeekOverview({
+  days,
+  state,
+  selected,
+  onSelect,
+}: {
+  days: Date[]
+  state: ReturnType<typeof useStore>["state"]
+  selected: Date
+  onSelect: (date: Date) => void
+}) {
+  const stats = days.map((day) => {
+    const date = fmtDate(day)
+    const dayTasks = state.tasks.filter((t) => t.date === date)
+    const dayHabits = state.habits.filter((h) => isHabitApplicable(h, date))
+    const done =
+      dayTasks.filter((t) => t.done).length +
+      dayHabits.filter((h) => !!state.habitLogs[`${h.id}:${date}`]).length
+    const total = dayTasks.length + dayHabits.length
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0
+    return { day, date, done, total, pct }
+  })
+
+  return (
+    <div className="w-full rounded-2xl border border-border bg-card p-5">
+      <h3 className="mb-4 text-sm font-medium text-muted-foreground">This week</h3>
+      <div className="flex items-end justify-between gap-2">
+        {stats.map((s) => {
+          const isSelected = s.date === fmtDate(selected)
+          return (
+            <button
+              key={s.date}
+              type="button"
+              onClick={() => onSelect(s.day)}
+              className="flex flex-1 flex-col items-center gap-2"
+            >
+              <div className="flex h-16 w-full items-end overflow-hidden rounded-lg bg-secondary">
+                <div
+                  className={cn(
+                    "w-full rounded-lg transition-all",
+                    isSelected ? "bg-primary" : "bg-border-strong",
+                  )}
+                  style={{ height: s.total > 0 ? `${Math.max(s.pct, 6)}%` : "0%" }}
+                />
+              </div>
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  isSelected ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {WEEKDAY_SHORT[s.day.getDay()]}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function WeekDayFooter({
   days,
