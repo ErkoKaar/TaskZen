@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TaskZen
 
-## Getting Started
+Next.js 16 + Supabase app combining two tools under one shell, switchable from the navbar:
 
-First, run the development server:
+- **FocusLoop** — circular Pomodoro-style focus timer with custom activities, statistics, sound effects, and server-scheduled push notifications (work even with a locked screen).
+- **Task Manager** — daily tasks, habits (with streaks, archive/restore), and statistics.
+
+Installable as a PWA. All data is scoped per-user via Supabase Auth (username-based login) and Postgres Row Level Security.
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy `.env.local.example` to `.env.local` and fill in:
 
-## Learn More
+| Variable | Where to get it |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project → Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project → Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase project → Settings → API (server-only, never expose to the client) |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Generate with `npx web-push generate-vapid-keys` |
 
-To learn more about Next.js, take a look at the following resources:
+Database schema and RLS policies live in `supabase/schema.sql` — run it against a fresh Supabase project before first use. The `send-due-notifications` Edge Function (`supabase/functions/`) needs to be deployed and scheduled with `pg_cron` for push notifications to fire while the app is closed.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Tech stack
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Next.js 16 (App Router, Turbopack), React, Tailwind v4, shadcn/ui, Supabase (Auth + Postgres + Edge Functions), Web Push API, recharts.
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed on [Vercel](https://vercel.com). Set the environment variables above in the project settings, then push to the connected branch.
