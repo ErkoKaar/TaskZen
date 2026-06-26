@@ -18,7 +18,7 @@ export default async function RegisterPage({
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-8 px-4">
       <Image
-        src="/taskzen_logo_v4_transparent.png"
+        src="/taskzen_logo_final_transparent.png"
         alt="TaskZen"
         width={220}
         height={220}
