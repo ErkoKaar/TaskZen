@@ -57,3 +57,15 @@ export async function createActivity(input: {
   if (error) throw error
   return data
 }
+
+export async function deleteActivity(id: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.from("activities").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function renameActivity(id: string, name: string): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.from("activities").update({ name }).eq("id", id)
+  if (error) throw error
+}

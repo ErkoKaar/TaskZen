@@ -1,10 +1,11 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Check, Plus, Trash2 } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react"
 import {
   fmtDate,
   fmtDayLabel,
+  fmtMonthYear,
   isHabitApplicable,
   rangeDates,
   startOfWeek,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils"
 export default function TasksPage() {
   const [view, setView] = useState<ViewKey>("week")
   const [selectedDate, setSelectedDate] = useState(() => new Date())
+  const [monthOffset, setMonthOffset] = useState(0)
   const { state, addTask, toggleTask, deleteTask, toggleHabit } = useStore()
 
   const range = useMemo(() => getRange(view, state), [view, state])
@@ -26,10 +28,11 @@ export default function TasksPage() {
     if (view === "week") return rangeDates(startOfWeek(new Date()), 7)
     // month
     const today = new Date()
-    const first = new Date(today.getFullYear(), today.getMonth(), 1)
-    const last = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    const first = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+    const last = new Date(today.getFullYear(), today.getMonth() + monthOffset + 1, 0)
     return rangeDates(first, last.getDate())
-  }, [view])
+  }, [view, monthOffset])
+  const monthLabel = useMemo(() => (days.length > 0 ? fmtMonthYear(days[0]) : ""), [days])
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -47,11 +50,41 @@ export default function TasksPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tasks</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {range.label} · {state.tasks.length} tasks ·{" "}
+              {view === "month" ? monthLabel : range.label} · {state.tasks.length} tasks ·{" "}
               {state.habits.filter((h) => !h.archivedAt).length} habits
             </p>
           </div>
-          <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
+          <div className="flex items-center gap-2">
+            {view === "month" && (
+              <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
+                <button
+                  type="button"
+                  onClick={() => setMonthOffset((m) => m - 1)}
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  aria-label="Previous month"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonthOffset(0)}
+                  disabled={monthOffset === 0}
+                  className="px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMonthOffset((m) => m + 1)}
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  aria-label="Next month"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
+          </div>
         </div>
 
         {view === "week" ? (

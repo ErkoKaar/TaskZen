@@ -9,12 +9,20 @@ import {
   Square,
   Check,
   ChevronDown,
+  Pencil,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TimerRing } from "@/components/focusloop/timer-ring"
 import { NotificationToggle } from "@/components/focusloop/notification-toggle"
 import { formatDuration } from "@/lib/focusloop/data"
-import { listActivities, createActivity, type Activity } from "@/lib/focusloop/activities"
+import {
+  listActivities,
+  createActivity,
+  deleteActivity,
+  renameActivity,
+  type Activity,
+} from "@/lib/focusloop/activities"
 import { recordSession } from "@/lib/focusloop/sessions"
 import { playFocusChime, playRestChime, playCompleteChime } from "@/lib/focusloop/sound"
 import { rescheduleNotifications, computeSchedule } from "@/lib/notifications/notify"
@@ -22,11 +30,21 @@ import { cn } from "@/lib/utils"
 
 type Phase = "idle" | "focus" | "rest" | "done"
 
+const CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+]
+
 export function FocusTimer() {
   const [activities, setActivities] = useState<Activity[]>([])
   const [activity, setActivity] = useState<Activity | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [newActivity, setNewActivity] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState("")
 
   const [focusMin, setFocusMin] = useState(25)
   const [restMin, setRestMin] = useState(5)
@@ -171,7 +189,8 @@ export function FocusTimer() {
   function addActivity() {
     const name = newActivity.trim()
     if (!name) return
-    createActivity({ name, color: "var(--chart-3)" })
+    const color = CHART_COLORS[activities.length % CHART_COLORS.length]
+    createActivity({ name, color })
       .then((created) => {
         setActivities((prev) => [created, ...prev])
         setActivity(created)
@@ -179,6 +198,38 @@ export function FocusTimer() {
         setPickerOpen(false)
       })
       .catch((err) => console.error("Failed to create activity", err))
+  }
+
+  function removeActivity(id: string) {
+    const target = activities.find((a) => a.id === id)
+    if (!target) return
+    if (!window.confirm(`Delete "${target.name}"? Past sessions keep their recorded time.`)) return
+    deleteActivity(id)
+      .then(() => {
+        setActivities((prev) => prev.filter((a) => a.id !== id))
+        setActivity((current) =>
+          current?.id === id ? activities.find((a) => a.id !== id) ?? null : current,
+        )
+      })
+      .catch((err) => console.error("Failed to delete activity", err))
+  }
+
+  function startEditActivity(a: Activity) {
+    setEditingId(a.id)
+    setEditingName(a.name)
+  }
+
+  function saveEditActivity() {
+    const id = editingId
+    const name = editingName.trim()
+    setEditingId(null)
+    if (!id || !name) return
+    renameActivity(id, name)
+      .then(() => {
+        setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, name } : a)))
+        setActivity((current) => (current?.id === id ? { ...current, name } : current))
+      })
+      .catch((err) => console.error("Failed to rename activity", err))
   }
 
   if (!activity) {
@@ -240,28 +291,65 @@ export function FocusTimer() {
         {pickerOpen && configuring && (
           <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-border bg-popover shadow-xl">
             <div className="max-h-56 overflow-y-auto p-1">
-              {activities.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => {
-                    setActivity(a)
-                    setPickerOpen(false)
-                  }}
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm hover:bg-secondary"
-                >
-                  <span className="flex items-center gap-3">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: a.color }}
-                    />
-                    {a.name}
-                  </span>
-                  {a.id === activity.id && (
-                    <Check className="h-4 w-4 text-primary" />
-                  )}
-                </button>
-              ))}
+              {activities.map((a) =>
+                editingId === a.id ? (
+                  <input
+                    key={a.id}
+                    autoFocus
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveEditActivity()
+                      if (e.key === "Escape") setEditingId(null)
+                    }}
+                    onBlur={saveEditActivity}
+                    className="mb-0.5 h-9 w-full rounded-xl bg-secondary px-3 text-sm text-foreground outline-none ring-2 ring-ring"
+                  />
+                ) : (
+                  <div
+                    key={a.id}
+                    className="group flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm hover:bg-secondary"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActivity(a)
+                        setPickerOpen(false)
+                      }}
+                      className="flex flex-1 items-center gap-3 text-left"
+                    >
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: a.color }}
+                      />
+                      {a.name}
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {a.id === activity.id && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => startEditActivity(a)}
+                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+                        aria-label={`Rename ${a.name}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      {activities.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeActivity(a.id)}
+                          className="rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+                          aria-label={`Delete ${a.name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ),
+              )}
             </div>
             <div className="flex items-center gap-2 border-t border-border p-2">
               <input
