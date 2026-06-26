@@ -7,8 +7,12 @@ import { createAdminClient } from "@/lib/supabase/admin"
 const INVALID_CREDENTIALS = "Invalid username or password."
 
 export async function signIn(formData: FormData) {
-  const username = (formData.get("username") as string).trim()
+  const username = (formData.get("username") as string | null)?.trim().toLowerCase()
   const password = formData.get("password") as string
+
+  if (!username) {
+    redirect(`/login?error=${encodeURIComponent(INVALID_CREDENTIALS)}`)
+  }
 
   const admin = createAdminClient()
   const { data: profile } = await admin
@@ -41,7 +45,7 @@ export async function signIn(formData: FormData) {
 }
 
 export async function signUp(formData: FormData) {
-  const username = (formData.get("username") as string).trim()
+  const username = (formData.get("username") as string | null)?.trim().toLowerCase()
   const email = formData.get("email") as string
   const password = formData.get("password") as string
 
