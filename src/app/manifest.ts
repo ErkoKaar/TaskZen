@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "TaskZen",
     short_name: "TaskZen",
     description: "Focus timer and task/habit manager.",
-    start_url: "/",
+    start_url: "/tasks",
     display: "standalone",
     background_color: "#0c0e16",
     theme_color: "#0c0e16",
