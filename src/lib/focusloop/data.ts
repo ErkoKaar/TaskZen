@@ -20,3 +20,33 @@ export function formatClock(totalSeconds: number): string {
   const s = totalSeconds % 60
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
 }
+
+// Remembers the not-yet-started session config (activity + durations +
+// rounds) across navigating away and back — local-only, since it's just a
+// draft, not anything that needs to survive a session actually starting.
+const DRAFT_KEY = "focusloop-draft-config"
+
+export type DraftConfig = {
+  activityId: string | null
+  focusMin: number
+  restMin: number
+  rounds: number
+}
+
+export function loadDraftConfig(): Partial<DraftConfig> {
+  if (typeof window === "undefined") return {}
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function saveDraftConfig(draft: DraftConfig) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+  } catch {
+    // ignore (e.g. private browsing storage restrictions)
+  }
+}

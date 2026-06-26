@@ -8,7 +8,19 @@ function getContext(): AudioContext | null {
     const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     sharedContext = new Ctor()
   }
+  if (sharedContext.state === "suspended") {
+    sharedContext.resume().catch(() => {})
+  }
   return sharedContext
+}
+
+// Creates (or resumes) the shared AudioContext from inside a real user
+// gesture handler (e.g. the "Start focus" click). iOS Safari/PWA standalone
+// mode keeps a context created outside a gesture permanently "suspended",
+// which silently swallows every beep later — including ones triggered from
+// a background tab's phase-transition timer, not just a click.
+export function unlockAudio() {
+  getContext()
 }
 
 function beep(ctx: AudioContext, freq: number, startTime: number, duration: number) {

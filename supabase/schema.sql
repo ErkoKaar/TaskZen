@@ -133,3 +133,47 @@ create policy "Users manage their own scheduled notifications" on scheduled_noti
 create index if not exists scheduled_notifications_due_idx
   on scheduled_notifications (send_at)
   where not sent;
+
+-- Live FocusLoop session state — persisted (not just React state) so an
+-- active session survives navigating elsewhere in the app or reloading the
+-- page, and is synced in real time across every device signed into the same
+-- account. A row only exists while a session is active; phase='done' is the
+-- transient "session complete" card, shown until the user starts a new
+-- session or dismisses it (both delete this row).
+--
+-- secondsLeft is derived client-side as
+-- phase_seconds_left - (now() - phase_started_at) while running, or just
+-- phase_seconds_left (frozen) while paused — never ticked/stored directly.
+
+create table if not exists focus_timer_state (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  activity_id uuid references activities(id) on delete set null,
+  phase text not null check (phase in ('focus', 'rest', 'done')),
+  running boolean not null default true,
+  current_round integer not null default 1,
+  rounds integer not null,
+  focus_min integer not null,
+  rest_min integer not null,
+  phase_started_at timestamptz not null default now(),
+  phase_seconds_left integer not null,
+  focused_seconds_accumulated integer not null default 0,
+  session_started_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table focus_timer_state enable row level security;
+
+create policy "Users manage their own timer state" on focus_timer_state
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Required for cross-device sync: Realtime only streams changes for tables
+-- added to this publication. Guarded so re-running this file is a no-op.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'focus_timer_state'
+  ) then
+    alter publication supabase_realtime add table focus_timer_state;
+  end if;
+end $$;

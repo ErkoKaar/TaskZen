@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Pause,
   Play,
@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { TimerRing } from "@/components/focusloop/timer-ring"
 import { NotificationToggle } from "@/components/focusloop/notification-toggle"
-import { formatDuration } from "@/lib/focusloop/data"
+import { formatDuration, loadDraftConfig, saveDraftConfig } from "@/lib/focusloop/data"
 import {
   listActivities,
   createActivity,
@@ -23,12 +23,8 @@ import {
   renameActivity,
   type Activity,
 } from "@/lib/focusloop/activities"
-import { recordSession } from "@/lib/focusloop/sessions"
-import { playFocusChime, playRestChime, playCompleteChime } from "@/lib/focusloop/sound"
-import { rescheduleNotifications, computeSchedule } from "@/lib/notifications/notify"
+import { useFocusTimer } from "@/lib/focusloop/timer-store"
 import { cn } from "@/lib/utils"
-
-type Phase = "idle" | "focus" | "rest" | "done"
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -46,144 +42,55 @@ export function FocusTimer() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState("")
 
-  const [focusMin, setFocusMin] = useState(25)
-  const [restMin, setRestMin] = useState(5)
-  const [rounds, setRounds] = useState(4)
+  const [focusMin, setFocusMin] = useState(() => loadDraftConfig().focusMin ?? 25)
+  const [restMin, setRestMin] = useState(() => loadDraftConfig().restMin ?? 5)
+  const [rounds, setRounds] = useState(() => loadDraftConfig().rounds ?? 4)
 
-  const [phase, setPhase] = useState<Phase>("idle")
-  const [running, setRunning] = useState(false)
-  const [currentRound, setCurrentRound] = useState(1)
-  const [secondsLeft, setSecondsLeft] = useState(focusMin * 60)
-  const [focusedSeconds, setFocusedSeconds] = useState(0)
-
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const sessionStartRef = useRef<Date | null>(null)
-  const focusedSecondsRef = useRef(0)
-  const finishedRef = useRef(false)
+  const {
+    session,
+    secondsLeft,
+    start: startSession,
+    pause,
+    resume,
+    cancel,
+    dismissCompletion,
+  } = useFocusTimer()
 
   useEffect(() => {
     listActivities()
       .then((loaded) => {
         setActivities(loaded)
-        setActivity((current) => current ?? loaded[0] ?? null)
+        setActivity((current) => {
+          if (current) return current
+          const draftId = loadDraftConfig().activityId
+          return loaded.find((a) => a.id === draftId) ?? loaded[0] ?? null
+        })
       })
       .catch((err) => console.error("Failed to load activities", err))
-    // Clear any notifications left scheduled by a session that was abandoned
-    // by refreshing/closing the page instead of cancelling.
-    rescheduleNotifications([])
   }, [])
 
-  const totalForPhase =
-    phase === "rest" ? restMin * 60 : focusMin * 60
-  const progress = phase === "idle" ? 1 : secondsLeft / totalForPhase
-
-  // keep idle display in sync with the configured focus length
+  // Persist the draft (not-yet-started) config so it survives navigating
+  // away and back — only matters while configuring; once a session starts,
+  // its own persisted state takes over.
   useEffect(() => {
-    if (phase === "idle") setSecondsLeft(focusMin * 60)
-  }, [focusMin, phase])
+    if (!activity) return
+    saveDraftConfig({ activityId: activity.id, focusMin, restMin, rounds })
+  }, [activity, focusMin, restMin, rounds])
 
-  useEffect(() => {
-    if (!running) return
-    intervalRef.current = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (phase === "focus") {
-          focusedSecondsRef.current += 1
-          setFocusedSeconds(focusedSecondsRef.current)
-        }
-        if (prev <= 1) {
-          handlePhaseEnd()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, phase, currentRound])
-
-  function handlePhaseEnd() {
-    if (phase === "focus") {
-      const isLastRound = currentRound >= rounds
-      if (isLastRound) {
-        finish()
-      } else {
-        playRestChime()
-        setPhase("rest")
-        setSecondsLeft(restMin * 60)
-      }
-    } else if (phase === "rest") {
-      playFocusChime()
-      setCurrentRound((r) => r + 1)
-      setPhase("focus")
-      setSecondsLeft(focusMin * 60)
-    }
-  }
+  const phase = session?.phase ?? "idle"
+  const totalForPhase = session
+    ? session.phase === "rest"
+      ? session.restMin * 60
+      : session.focusMin * 60
+    : focusMin * 60
+  const progress = !session ? 1 : secondsLeft / totalForPhase
+  const displaySecondsLeft = session ? secondsLeft : focusMin * 60
 
   function start() {
-    sessionStartRef.current = new Date()
-    focusedSecondsRef.current = 0
-    finishedRef.current = false
-    setPhase("focus")
-    setRunning(true)
-    setCurrentRound(1)
-    setFocusedSeconds(0)
-    setSecondsLeft(focusMin * 60)
-    rescheduleNotifications(
-      computeSchedule({
-        phase: "focus",
-        secondsLeft: focusMin * 60,
-        currentRound: 1,
-        rounds,
-        focusMin,
-        restMin,
-      }),
+    if (!activity) return
+    startSession({ activityId: activity.id, focusMin, restMin, rounds }).catch((err) =>
+      console.error("Failed to start focus session", err),
     )
-  }
-
-  function pause() {
-    setRunning(false)
-    rescheduleNotifications([])
-  }
-
-  function resume() {
-    setRunning(true)
-    rescheduleNotifications(
-      computeSchedule({ phase: phase as "focus" | "rest", secondsLeft, currentRound, rounds, focusMin, restMin }),
-    )
-  }
-
-  function finish() {
-    if (finishedRef.current) return
-    finishedRef.current = true
-    setRunning(false)
-    setPhase("done")
-    playCompleteChime()
-    if (activity && sessionStartRef.current) {
-      recordSession({
-        activityId: activity.id,
-        focusedSeconds: focusedSecondsRef.current,
-        rounds: currentRound,
-        startedAt: sessionStartRef.current,
-      }).catch((err) => console.error("Failed to record session", err))
-    }
-  }
-
-  function cancel() {
-    setRunning(false)
-    setPhase("idle")
-    setCurrentRound(1)
-    setSecondsLeft(focusMin * 60)
-    rescheduleNotifications([])
-  }
-
-  function reset() {
-    setPhase("idle")
-    setRunning(false)
-    setCurrentRound(1)
-    setFocusedSeconds(0)
-    setSecondsLeft(focusMin * 60)
   }
 
   function addActivity() {
@@ -240,21 +147,21 @@ export function FocusTimer() {
     )
   }
 
-  const configuring = phase === "idle"
-  const roundLabel =
-    phase === "idle"
-      ? `${rounds} ${rounds === 1 ? "round" : "rounds"}`
-      : phase === "done"
-        ? "Session complete"
-        : `Round ${currentRound} of ${rounds}`
+  const configuring = !session
+  const roundLabel = !session
+    ? `${rounds} ${rounds === 1 ? "round" : "rounds"}`
+    : phase === "done"
+      ? "Session complete"
+      : `Round ${session.currentRound} of ${session.rounds}`
 
   if (phase === "done") {
+    const completedActivity = activities.find((a) => a.id === session?.activityId) ?? activity
     return (
       <CompletionCard
-        activity={activity}
-        focusedSeconds={focusedSeconds}
-        rounds={rounds}
-        onReset={reset}
+        activity={completedActivity}
+        focusedSeconds={session?.focusedSecondsAccumulated ?? 0}
+        rounds={session?.rounds ?? rounds}
+        onReset={dismissCompletion}
       />
     )
   }
@@ -369,7 +276,7 @@ export function FocusTimer() {
 
       <TimerRing
         progress={progress}
-        secondsLeft={secondsLeft}
+        secondsLeft={displaySecondsLeft}
         phase={phase}
         roundLabel={roundLabel}
       />
@@ -387,9 +294,9 @@ export function FocusTimer() {
               size="lg"
               variant="secondary"
               className="h-12 flex-1 gap-2"
-              onClick={running ? pause : resume}
+              onClick={session?.running ? pause : resume}
             >
-              {running ? (
+              {session?.running ? (
                 <>
                   <Pause className="h-5 w-5" /> Pause
                 </>
@@ -446,7 +353,7 @@ export function FocusTimer() {
 
       {!configuring && (
         <button
-          onClick={reset}
+          onClick={cancel}
           className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <RotateCcw className="h-4 w-4" /> Reset configuration

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { RegisterServiceWorker } from "@/components/register-service-worker";
+import { FocusTimerProvider } from "@/lib/focusloop/timer-store";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -50,7 +51,7 @@ export default function RootLayout({
     >
       <body className="bg-background font-sans antialiased">
         <RegisterServiceWorker />
-        {children}
+        <FocusTimerProvider>{children}</FocusTimerProvider>
       </body>
     </html>
   );
