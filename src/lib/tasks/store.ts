@@ -124,11 +124,16 @@ export function useStore() {
       .update({ done })
       .eq("id", id)
       .then(({ error }) => {
-        if (error) console.error("Failed to update task", error)
+        if (error) {
+          console.error("Failed to update task", error)
+          // Roll back the optimistic update — the server never applied it.
+          setState((s) => ({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, done: !done } : t)) }))
+        }
       })
   }, [state.tasks])
 
   const deleteTask = useCallback((id: string) => {
+    const removed = state.tasks.find((t) => t.id === id)
     setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }))
     const supabase = createClient()
     supabase
@@ -136,9 +141,12 @@ export function useStore() {
       .delete()
       .eq("id", id)
       .then(({ error }) => {
-        if (error) console.error("Failed to delete task", error)
+        if (error) {
+          console.error("Failed to delete task", error)
+          if (removed) setState((s) => ({ ...s, tasks: [...s.tasks, removed] }))
+        }
       })
-  }, [])
+  }, [state.tasks])
 
   const addHabit = useCallback((input: { name: string }) => {
     const supabase = createClient()
@@ -178,11 +186,18 @@ export function useStore() {
       .update({ archived_at: new Date(archivedAt).toISOString() })
       .eq("id", id)
       .then(({ error }) => {
-        if (error) console.error("Failed to archive habit", error)
+        if (error) {
+          console.error("Failed to archive habit", error)
+          setState((s) => ({
+            ...s,
+            habits: s.habits.map((h) => (h.id === id ? { ...h, archivedAt: null } : h)),
+          }))
+        }
       })
   }, [])
 
   const restoreHabit = useCallback((id: string) => {
+    const previous = state.habits.find((h) => h.id === id)?.archivedAt ?? null
     setState((s) => ({
       ...s,
       habits: s.habits.map((h) => (h.id === id ? { ...h, archivedAt: null } : h)),
@@ -193,13 +208,24 @@ export function useStore() {
       .update({ archived_at: null })
       .eq("id", id)
       .then(({ error }) => {
-        if (error) console.error("Failed to restore habit", error)
+        if (error) {
+          console.error("Failed to restore habit", error)
+          setState((s) => ({
+            ...s,
+            habits: s.habits.map((h) => (h.id === id ? { ...h, archivedAt: previous } : h)),
+          }))
+        }
       })
-  }, [])
+  }, [state.habits])
 
   // Permanent delete: removes the habit and all of its history everywhere
   // (habit_logs cascades). Cannot be undone — only call after confirming.
   const deleteHabit = useCallback((id: string) => {
+    const removedHabit = state.habits.find((h) => h.id === id)
+    const removedLogs: HabitLog = {}
+    Object.keys(state.habitLogs).forEach((k) => {
+      if (k.startsWith(`${id}:`)) removedLogs[k] = true
+    })
     setState((s) => {
       const newLogs = { ...s.habitLogs }
       Object.keys(newLogs).forEach((k) => {
@@ -217,9 +243,18 @@ export function useStore() {
       .delete()
       .eq("id", id)
       .then(({ error }) => {
-        if (error) console.error("Failed to delete habit", error)
+        if (error) {
+          console.error("Failed to delete habit", error)
+          if (removedHabit) {
+            setState((s) => ({
+              ...s,
+              habits: [...s.habits, removedHabit],
+              habitLogs: { ...s.habitLogs, ...removedLogs },
+            }))
+          }
+        }
       })
-  }, [])
+  }, [state.habits, state.habitLogs])
 
   const toggleHabit = useCallback(
     (habitId: string, date: string) => {
@@ -233,6 +268,15 @@ export function useStore() {
         return { ...s, habitLogs: newLogs }
       })
 
+      const revert = () => {
+        setState((s) => {
+          const newLogs = { ...s.habitLogs }
+          if (wasSet) newLogs[key] = true
+          else delete newLogs[key]
+          return { ...s, habitLogs: newLogs }
+        })
+      }
+
       const supabase = createClient()
       if (wasSet) {
         supabase
@@ -241,14 +285,20 @@ export function useStore() {
           .eq("habit_id", habitId)
           .eq("date", date)
           .then(({ error }) => {
-            if (error) console.error("Failed to unmark habit", error)
+            if (error) {
+              console.error("Failed to unmark habit", error)
+              revert()
+            }
           })
       } else {
         supabase
           .from("habit_logs")
           .insert({ habit_id: habitId, date })
           .then(({ error }) => {
-            if (error) console.error("Failed to mark habit", error)
+            if (error) {
+              console.error("Failed to mark habit", error)
+              revert()
+            }
           })
       }
     },

@@ -7,7 +7,18 @@ export function rescheduleNotifications(items: ScheduleItem[]) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
-  }).catch((err) => console.error("Failed to schedule notifications", err))
+  })
+    .then(async (res) => {
+      // A redirect (e.g. to /login if the session expired) is followed
+      // automatically and comes back as a 200 HTML page — not a real
+      // success, so check for it explicitly rather than trusting res.ok.
+      if (res.redirected) {
+        console.error("Failed to schedule notifications: session expired (redirected to login)")
+      } else if (!res.ok) {
+        console.error("Failed to schedule notifications", res.status, await res.text())
+      }
+    })
+    .catch((err) => console.error("Failed to schedule notifications", err))
 }
 
 type PhaseInput = {
