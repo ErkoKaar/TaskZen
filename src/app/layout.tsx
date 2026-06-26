@@ -10,9 +10,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Focus — Track where your time goes",
-  description:
-    "A circular Pomodoro-style focus timer that tracks your focused time per activity.",
+  title: "TaskZen",
+  description: "Focus timer and task/habit manager.",
   icons: {
     icon: [
       {
