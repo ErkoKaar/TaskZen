@@ -30,7 +30,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A subtle, near-static teal→violet ambient gradient layer is visible behind content on all four pages without hurting readability or scroll performance
   4. Criticality/category/priority indicators (e.g. the criticality picker) visibly use the teal→violet brand gradient as functional color-coding, not a single flat accent color
   5. Buttons and the shared nav/view tabs show hover and press feedback and animate tab switches smoothly (150-300ms); all of this motion stops or reduces when the OS `prefers-reduced-motion` setting is on
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — Design token foundation: cascade fix, warm palette + elevation tiers, gradient/motion/type/container tokens, reduced-motion + ambient-glow rules, motion.ts
+- [ ] 01-02-PLAN.md — Component restyles: criticality picker onto teal→violet gradient (FOUND-03), token-driven hover/press on nav + view tabs (MOTION-02)
+- [ ] 01-03-PLAN.md — Ambient background layout (FOUND-05), desktop container-width rollout (FOUND-04), view-switch content crossfade (MOTION-03)
 **UI hint**: yes
 
 ### Phase 2: Tasks & Habits Pages
@@ -77,7 +81,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Design Foundation & Motion System | 0/TBD | Not started | - |
+| 1. Design Foundation & Motion System | 0/3 | Not started | - |
 | 2. Tasks & Habits Pages | 0/TBD | Not started | - |
 | 3. Projects & Statistics Pages | 0/TBD | Not started | - |
 | 4. Brand Differentiators & Parity Verification | 0/TBD | Not started | - |
