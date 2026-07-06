@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Martian_Mono } from "next/font/google";
 import { RegisterServiceWorker } from "@/components/register-service-worker";
 import { FocusTimerProvider } from "@/lib/focusloop/timer-store";
 import "./globals.css";
@@ -7,6 +7,11 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+const martianMono = Martian_Mono({
+  variable: "--font-martian-mono",
+  weight: ["500", "600"],
   subsets: ["latin"],
 });
 
@@ -34,7 +39,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "dark",
-  themeColor: "#0c0e16",
+  themeColor: "#0b0e13",
   maximumScale: 1,
   userScalable: false,
 };
@@ -47,9 +52,23 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable}`}
+      className={`dark ${geistSans.variable} ${geistMono.variable} ${martianMono.variable}`}
     >
       <body className="bg-background font-sans antialiased">
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 opacity-[0.16]"
+          style={{
+            background: "radial-gradient(ellipse 1800px 1400px at 0% 220px, var(--primary), transparent 85%)",
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 opacity-[0.09]"
+          style={{
+            background: "radial-gradient(ellipse 1400px 1100px at 100% 100%, var(--accent), transparent 80%)",
+          }}
+        />
         <RegisterServiceWorker />
         <FocusTimerProvider>{children}</FocusTimerProvider>
       </body>
