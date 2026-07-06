@@ -1,8 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react"
+import Image from "next/image"
+import { ChevronLeft, ChevronRight, Flame, Trash2 } from "lucide-react"
 import {
+  computeStreak,
   fmtDate,
   fmtDayLabel,
   fmtMonthYear,
@@ -10,12 +12,18 @@ import {
   rangeDates,
   startOfWeek,
   useStore,
-  getRange,
 } from "@/lib/tasks/store"
 import { SiteHeader } from "@/components/site-header"
 import { TasksNavTabs } from "@/components/tasks/nav-tabs"
 import { ViewTabs, type ViewKey } from "@/components/tasks/view-tabs"
+import { CheckBox } from "@/components/tasks/check-box"
+import { GhostInput } from "@/components/tasks/ghost-input"
 import { cn } from "@/lib/utils"
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+const DELETE_BTN_CLASS =
+  "text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-60 hover:text-destructive"
 
 export default function TasksPage() {
   const [view, setView] = useState<ViewKey>("week")
@@ -23,10 +31,8 @@ export default function TasksPage() {
   const [monthOffset, setMonthOffset] = useState(0)
   const { state, addTask, toggleTask, deleteTask, toggleHabit } = useStore()
 
-  const range = useMemo(() => getRange(view, state), [view, state])
   const days = useMemo(() => {
     if (view === "week") return rangeDates(startOfWeek(new Date()), 7)
-    // month
     const today = new Date()
     const first = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
     const last = new Date(today.getFullYear(), today.getMonth() + monthOffset + 1, 0)
@@ -34,121 +40,242 @@ export default function TasksPage() {
   }, [view, monthOffset])
   const monthLabel = useMemo(() => (days.length > 0 ? fmtMonthYear(days[0]) : ""), [days])
 
+  const today = fmtDate(new Date())
+  const selected = fmtDate(selectedDate)
+  const selectedTasks = state.tasks.filter((t) => t.date === selected)
+  const selectedHabits = state.habits.filter((h) => isHabitApplicable(h, selected))
+  const doneCount =
+    selectedTasks.filter((t) => t.done).length +
+    selectedHabits.filter((h) => !!state.habitLogs[`${h.id}:${selected}`]).length
+  const totalCount = selectedTasks.length + selectedHabits.length
+  const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
+
   return (
     <div className="flex min-h-svh flex-col">
       <SiteHeader>
         <TasksNavTabs />
       </SiteHeader>
 
-      <main
-        className={cn(
-          "mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8 sm:px-6 sm:py-12",
-          view === "week" && "pb-28",
-        )}
-      >
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Tasks</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {view === "month" ? monthLabel : range.label} · {state.tasks.length} tasks ·{" "}
-              {state.habits.filter((h) => !h.archivedAt).length} habits
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {view === "month" && (
-              <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
-                <button
-                  type="button"
-                  onClick={() => setMonthOffset((m) => m - 1)}
-                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  aria-label="Previous month"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMonthOffset(0)}
-                  disabled={monthOffset === 0}
-                  className="px-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMonthOffset((m) => m + 1)}
-                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  aria-label="Next month"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-            <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
-          </div>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10 sm:px-8 sm:py-16">
+        <div className="flex items-center gap-3">
+          <Image src="/icons/tasks.svg" alt="" width={32} height={32} className="h-8 w-8" />
+          <h1 className="text-4xl font-semibold tracking-tight text-foreground">Tasks</h1>
         </div>
+        <p className="mt-2 text-lg text-muted-foreground">Your day, one task at a time.</p>
 
         {view === "week" ? (
-          <div className="mt-6 flex flex-col items-center gap-6">
-            <div className="w-full max-w-lg sm:max-w-2xl">
-              <DayCard
-                date={selectedDate}
-                tasks={state.tasks.filter((t) => t.date === fmtDate(selectedDate))}
-                habits={state.habits.filter((h) =>
-                  isHabitApplicable(h, fmtDate(selectedDate)),
-                )}
-                isHabitDone={(habitId) =>
-                  !!state.habitLogs[`${habitId}:${fmtDate(selectedDate)}`]
-                }
-                onAddTask={(input) => addTask({ ...input, date: fmtDate(selectedDate) })}
-                onToggleTask={toggleTask}
-                onDeleteTask={deleteTask}
-                onToggleHabit={(habitId) => toggleHabit(habitId, fmtDate(selectedDate))}
-                forceOpen
-              />
+          <div className="mt-10 lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start lg:gap-20">
+            <div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-[26px] font-semibold tracking-tight text-foreground">
+                    {fmtDayLabel(selectedDate)}
+                  </h2>
+                  {selected === today && (
+                    <span className="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary">
+                      Today
+                    </span>
+                  )}
+                </div>
+                <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
+              </div>
+
+              {/* Day switcher sits right under the heading it controls. */}
+              <div className="mt-8">
+                <WeekStrip days={days} state={state} selected={selectedDate} onSelect={setSelectedDate} />
+              </div>
+
+              <div className="mt-8 h-1 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-300"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="mt-2.5 text-sm tabular-nums text-muted-foreground">
+                {doneCount} / {totalCount} done
+              </div>
+
+              {selectedHabits.length > 0 && (
+                <>
+                  <SectionLabel>Habits</SectionLabel>
+                  <div className="divide-y divide-border">
+                    {selectedHabits.map((h) => {
+                      const done = !!state.habitLogs[`${h.id}:${selected}`]
+                      const streak = computeStreak(h.id, state.habitLogs, h.createdAt)
+                      return (
+                        <div key={h.id} className="flex items-center gap-4 py-5">
+                          <CheckBox checked={done} onClick={() => toggleHabit(h.id, selected)} />
+                          <span className={cn("flex-1 text-lg", done && "text-muted-foreground line-through")}>
+                            {h.name}
+                          </span>
+                          <span className="flex items-center gap-1 text-sm tabular-nums text-muted-foreground">
+                            <Flame className="h-4 w-4 text-[color:var(--chart-1)]" />
+                            {streak}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              <SectionLabel>Tasks</SectionLabel>
+              <div className="divide-y divide-border">
+                {selectedTasks.map((t) => (
+                  <TaskRow key={t.id} title={t.title} done={t.done} onToggle={() => toggleTask(t.id)} onDelete={() => deleteTask(t.id)} />
+                ))}
+                <GhostInput placeholder="Add a task…" onSubmit={(title) => addTask({ title, date: selected })} />
+              </div>
             </div>
-            <div className="w-full max-w-lg sm:max-w-2xl">
-              <WeekOverview
-                days={days}
-                state={state}
-                selected={selectedDate}
-                onSelect={setSelectedDate}
-              />
-            </div>
+
+            <aside className="lg:sticky lg:top-24">
+              <PeriodSummary label="This week" days={days} state={state} />
+            </aside>
           </div>
         ) : (
-          <div className="mt-6 space-y-3">
-            {days.map((day) => (
-              <DayCard
-                key={fmtDate(day)}
-                date={day}
-                tasks={state.tasks.filter((t) => t.date === fmtDate(day))}
-                habits={state.habits.filter((h) => isHabitApplicable(h, fmtDate(day)))}
-                isHabitDone={(habitId) => !!state.habitLogs[`${habitId}:${fmtDate(day)}`]}
-                onAddTask={(input) => addTask({ ...input, date: fmtDate(day) })}
-                onToggleTask={toggleTask}
-                onDeleteTask={deleteTask}
-                onToggleHabit={(habitId) => toggleHabit(habitId, fmtDate(day))}
-                compact
-              />
-            ))}
+          <div className="mt-10 lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start lg:gap-20">
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-[26px] font-semibold tracking-tight text-foreground">{monthLabel}</h2>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMonthOffset((m) => m - 1)}
+                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      aria-label="Previous month"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMonthOffset(0)}
+                      disabled={monthOffset === 0}
+                      className="px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMonthOffset((m) => m + 1)}
+                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      aria-label="Next month"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <ViewTabs value={view} onChange={setView} views={["week", "month"]} />
+                </div>
+              </div>
+
+              <div className="mt-8">
+                {days.map((day) => (
+                  <DaySection
+                    key={fmtDate(day)}
+                    date={day}
+                    state={state}
+                    onAddTask={(title) => addTask({ title, date: fmtDate(day) })}
+                    onToggleTask={toggleTask}
+                    onDeleteTask={deleteTask}
+                    onToggleHabit={(habitId) => toggleHabit(habitId, fmtDate(day))}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <aside className="lg:sticky lg:top-24">
+              <PeriodSummary label="This month" days={days} state={state} />
+            </aside>
           </div>
         )}
       </main>
-
-      {view === "week" && (
-        <WeekDayFooter
-          days={days}
-          selected={selectedDate}
-          onSelect={setSelectedDate}
-        />
-      )}
     </div>
   )
 }
 
-const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+function SectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "mb-2 mt-14 font-nav text-[11px] uppercase tracking-wider text-muted-foreground/80",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  )
+}
 
-function WeekOverview({
+function PeriodSummary({
+  label,
+  days,
+  state,
+}: {
+  label: string
+  days: Date[]
+  state: ReturnType<typeof useStore>["state"]
+}) {
+  let tasksDone = 0
+  let tasksTotal = 0
+  let habitChecks = 0
+  let habitSlots = 0
+  for (const day of days) {
+    const date = fmtDate(day)
+    const dayTasks = state.tasks.filter((t) => t.date === date)
+    tasksDone += dayTasks.filter((t) => t.done).length
+    tasksTotal += dayTasks.length
+    const dayHabits = state.habits.filter((h) => isHabitApplicable(h, date))
+    habitSlots += dayHabits.length
+    habitChecks += dayHabits.filter((h) => !!state.habitLogs[`${h.id}:${date}`]).length
+  }
+  const done = tasksDone + habitChecks
+  const total = tasksTotal + habitSlots
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+
+  return (
+    <div>
+      <SectionLabel className="mt-0">{label}</SectionLabel>
+      <dl className="space-y-4 text-lg">
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted-foreground">Tasks done</dt>
+          <dd className="font-medium tabular-nums">{tasksDone} / {tasksTotal}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted-foreground">Habit checks</dt>
+          <dd className="font-medium tabular-nums">{habitChecks} / {habitSlots}</dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <dt className="text-muted-foreground">Completion</dt>
+          <dd className="font-medium tabular-nums">{pct}%</dd>
+        </div>
+      </dl>
+    </div>
+  )
+}
+
+function TaskRow({
+  title,
+  done,
+  onToggle,
+  onDelete,
+}: {
+  title: string
+  done: boolean
+  onToggle: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="group flex items-center gap-4 py-5">
+      <CheckBox checked={done} onClick={onToggle} />
+      <span className={cn("flex-1 text-lg", done && "text-muted-foreground line-through")}>{title}</span>
+      <button onClick={onDelete} className={DELETE_BTN_CLASS} aria-label="Delete task">
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+function WeekStrip({
   days,
   state,
   selected,
@@ -159,270 +286,125 @@ function WeekOverview({
   selected: Date
   onSelect: (date: Date) => void
 }) {
-  const stats = days.map((day) => {
-    const date = fmtDate(day)
-    const dayTasks = state.tasks.filter((t) => t.date === date)
-    const dayHabits = state.habits.filter((h) => isHabitApplicable(h, date))
-    const done =
-      dayTasks.filter((t) => t.done).length +
-      dayHabits.filter((h) => !!state.habitLogs[`${h.id}:${date}`]).length
-    const total = dayTasks.length + dayHabits.length
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0
-    return { day, date, done, total, pct }
-  })
-
+  const today = fmtDate(new Date())
   return (
-    <div className="w-full rounded-2xl border border-border bg-card p-5">
-      <h3 className="mb-4 text-sm font-medium text-muted-foreground">This week</h3>
-      <div className="flex items-end justify-between gap-2">
-        {stats.map((s) => {
-          const isSelected = s.date === fmtDate(selected)
-          return (
-            <button
-              key={s.date}
-              type="button"
-              onClick={() => onSelect(s.day)}
-              className="flex flex-1 flex-col items-center gap-2"
-            >
-              <div className="flex h-16 w-full items-end overflow-hidden rounded-lg bg-secondary">
-                <div
-                  className={cn(
-                    "w-full rounded-lg transition-all",
-                    isSelected ? "bg-primary" : "bg-border-strong",
-                  )}
-                  style={{ height: s.total > 0 ? `${Math.max(s.pct, 6)}%` : "0%" }}
-                />
-              </div>
-              <span
+    <div className="flex items-end gap-2">
+      {days.map((day) => {
+        const date = fmtDate(day)
+        const dayTasks = state.tasks.filter((t) => t.date === date)
+        const dayHabits = state.habits.filter((h) => isHabitApplicable(h, date))
+        const done =
+          dayTasks.filter((t) => t.done).length +
+          dayHabits.filter((h) => !!state.habitLogs[`${h.id}:${date}`]).length
+        const total = dayTasks.length + dayHabits.length
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0
+        const isSelected = date === fmtDate(selected)
+        const isToday = date === today
+        return (
+          <button
+            key={date}
+            type="button"
+            onClick={() => onSelect(day)}
+            className="flex flex-1 flex-col items-center gap-2 rounded-lg py-1.5 transition-colors hover:bg-accent/40"
+          >
+            <div className="flex h-14 w-full max-w-10 items-end">
+              <div
                 className={cn(
-                  "text-xs font-medium",
-                  isSelected ? "text-foreground" : "text-muted-foreground",
+                  "w-full rounded transition-all",
+                  isSelected ? "bg-primary" : pct > 0 ? "bg-muted-foreground/40" : "bg-surface-2",
                 )}
-              >
-                {WEEKDAY_SHORT[s.day.getDay()]}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+                style={{ height: `${total > 0 ? Math.max(pct, 8) : 8}%` }}
+              />
+            </div>
+            <span
+              className={cn(
+                "flex items-center gap-1.5 text-sm font-medium",
+                isSelected ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {WEEKDAY_SHORT[day.getDay()]}
+              {isToday && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-function WeekDayFooter({
-  days,
-  selected,
-  onSelect,
-}: {
-  days: Date[]
-  selected: Date
-  onSelect: (date: Date) => void
-}) {
-  const today = fmtDate(new Date())
-  return (
-    <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-1 px-4 py-3 sm:px-6">
-        {days.map((day) => {
-          const isSelected = fmtDate(day) === fmtDate(selected)
-          const isToday = fmtDate(day) === today
-          return (
-            <button
-              key={fmtDate(day)}
-              type="button"
-              onClick={() => onSelect(day)}
-              className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors sm:flex-initial sm:px-4",
-                isSelected
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-              )}
-            >
-              <span>{WEEKDAY_SHORT[day.getDay()]}</span>
-              <span className="flex items-center gap-1 text-[10px] tabular-nums">
-                {day.getDate()}
-                {isToday && (
-                  <span
-                    className={cn(
-                      "h-1 w-1 rounded-full",
-                      isSelected ? "bg-primary-foreground" : "bg-primary",
-                    )}
-                  />
-                )}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-    </footer>
-  )
-}
-
-function DayCard({
+function DaySection({
   date,
-  tasks,
-  habits,
-  isHabitDone,
+  state,
   onAddTask,
   onToggleTask,
   onDeleteTask,
   onToggleHabit,
-  compact,
-  forceOpen,
 }: {
   date: Date
-  tasks: ReturnType<typeof useStore>["state"]["tasks"]
-  habits: ReturnType<typeof useStore>["state"]["habits"]
-  isHabitDone: (habitId: string) => boolean
-  onAddTask: (input: { title: string }) => void
+  state: ReturnType<typeof useStore>["state"]
+  onAddTask: (title: string) => void
   onToggleTask: (id: string) => void
   onDeleteTask: (id: string) => void
-  onToggleHabit: (id: string) => void
-  compact?: boolean
-  forceOpen?: boolean
+  onToggleHabit: (habitId: string) => void
 }) {
-  const today = fmtDate(new Date())
-  const isToday = fmtDate(date) === today
-  const [title, setTitle] = useState("")
-  const [open, setOpen] = useState(!compact && isToday)
-  const isOpen = forceOpen || open
+  const dateStr = fmtDate(date)
+  const isToday = dateStr === fmtDate(new Date())
+  const [open, setOpen] = useState(false)
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!title.trim()) return
-    onAddTask({ title: title.trim() })
-    setTitle("")
-  }
-
-  const dayLabel = fmtDayLabel(date)
-
-  const header = (
-    <>
-      <div className="flex items-baseline gap-3">
-        <span className={`text-sm font-medium ${isToday ? "text-foreground" : "text-muted-foreground"}`}>
-          {dayLabel}
-        </span>
-        {isToday && (
-          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
-            Today
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span>{tasks.filter((t) => t.done).length}/{tasks.length} tasks</span>
-        <span>·</span>
-        <span>
-          {habits.filter((h) => isHabitDone(h.id)).length}/{habits.length} habits
-        </span>
-      </div>
-    </>
-  )
+  const tasks = state.tasks.filter((t) => t.date === dateStr)
+  const habits = state.habits.filter((h) => isHabitApplicable(h, dateStr))
+  const done =
+    tasks.filter((t) => t.done).length +
+    habits.filter((h) => !!state.habitLogs[`${h.id}:${dateStr}`]).length
+  const total = tasks.length + habits.length
 
   return (
-    <div className="rounded-xl border border-border bg-card">
-      {forceOpen ? (
-        <div className="flex w-full items-center justify-between px-5 py-3 text-left">
-          {header}
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="flex w-full items-center justify-between px-5 py-3 text-left"
-        >
-          {header}
-        </button>
-      )}
+    <div className="border-b border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-3 py-5 text-left"
+      >
+        <span className="flex items-baseline gap-3">
+          <span className={cn("text-lg font-medium", isToday ? "text-foreground" : "text-muted-foreground")}>
+            {fmtDayLabel(date)}
+          </span>
+          {isToday && (
+            <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+              Today
+            </span>
+          )}
+        </span>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {done}/{total}
+        </span>
+      </button>
 
-      {isOpen && (
-        <div className="border-t border-border px-5 py-4 space-y-4">
-          {/* Habits */}
+      {open && (
+        <div className="pb-5 pl-1">
           {habits.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                Habits
-              </div>
-              <div className="space-y-1">
-                {habits.map((h) => {
-                  const done = isHabitDone(h.id)
-                  return (
-                    <div
-                      key={h.id}
-                      className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-accent/40"
-                    >
-                      <CheckBox checked={done} onClick={() => onToggleHabit(h.id)} />
-                      <span className={`flex-1 text-sm ${done ? "text-muted-foreground line-through" : ""}`}>
-                        {h.name}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+            <div className="divide-y divide-border">
+              {habits.map((h) => {
+                const habitDone = !!state.habitLogs[`${h.id}:${dateStr}`]
+                return (
+                  <div key={h.id} className="flex items-center gap-4 py-5">
+                    <CheckBox checked={habitDone} onClick={() => onToggleHabit(h.id)} />
+                    <span className={cn("flex-1 text-lg", habitDone && "text-muted-foreground line-through")}>
+                      {h.name}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           )}
-
-          {/* Tasks */}
-          <div className="space-y-2">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Tasks
-            </div>
-            <div className="space-y-1">
-              {tasks.length === 0 && (
-                <p className="px-2 py-1 text-sm text-muted-foreground">No tasks yet.</p>
-              )}
-              {tasks.map((t) => (
-                <div
-                  key={t.id}
-                  className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-accent/40"
-                >
-                  <CheckBox checked={t.done} onClick={() => onToggleTask(t.id)} />
-                  <span className={`flex-1 text-sm ${t.done ? "text-muted-foreground line-through" : ""}`}>
-                    {t.title}
-                  </span>
-                  <button
-                    onClick={() => onDeleteTask(t.id)}
-                    className="opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-                    aria-label="Delete task"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <form onSubmit={submit} className="flex items-center gap-2 pt-1">
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Add a task…"
-                className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add
-              </button>
-            </form>
+          <div className={cn("divide-y divide-border", habits.length > 0 && "border-t border-border")}>
+            {tasks.map((t) => (
+              <TaskRow key={t.id} title={t.title} done={t.done} onToggle={() => onToggleTask(t.id)} onDelete={() => onDeleteTask(t.id)} />
+            ))}
+            <GhostInput placeholder="Add a task…" onSubmit={onAddTask} />
           </div>
         </div>
       )}
     </div>
-  )
-}
-
-function CheckBox({ checked, onClick }: { checked: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`grid h-4 w-4 shrink-0 place-items-center rounded border transition-colors ${
-        checked
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border-strong bg-background hover:border-foreground"
-      }`}
-      aria-pressed={checked}
-    >
-      {checked && <Check className="h-3 w-3" strokeWidth={3} />}
-    </button>
   )
 }
