@@ -406,6 +406,7 @@ export function computeStreak(
 export function getRange(
   view: "week" | "month" | "year" | "all",
   state: StoreState,
+  extraEarliest: number[] = [],
 ): { start: Date; end: Date; label: string } {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -429,6 +430,7 @@ export function getRange(
   const earliestTask = Math.min(
     ...state.tasks.map((t) => parseDate(t.date).getTime()),
     ...state.habits.map((h) => h.createdAt),
+    ...extraEarliest,
     today.getTime(),
   )
   return { start: new Date(earliestTask), end: today, label: "All time" }

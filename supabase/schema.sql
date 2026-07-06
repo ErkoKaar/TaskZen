@@ -177,3 +177,64 @@ begin
     alter publication supabase_realtime add table focus_timer_state;
   end if;
 end $$;
+
+-- Projects schema: a separate, project-based task model — independent of
+-- the date-based `tasks` table used by daily Tasks/Habits. Both projects
+-- and their project_tasks carry an independent criticality marker and an
+-- independent completed_at, which drives a 24h auto-delete sweep run from
+-- the client (see src/lib/tasks/projects-store.ts). project_completions is
+-- a permanent log that survives that deletion, so historical stats
+-- ("Projects completed") aren't lost once the live row is gone.
+
+create table if not exists projects (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title text not null,
+  criticality text not null default 'on_track'
+    check (criticality in ('critical', 'warning', 'on_track')),
+  created_at timestamptz not null default now(),
+  -- null = not done. Set = done; row is hard-deleted ~24h after this is set
+  -- (client-side sweep on load, see projects-store.ts).
+  completed_at timestamptz,
+  -- Drag-and-drop display order (see reorderProjects in projects-store.ts).
+  sort_order integer not null default 0
+);
+
+create table if not exists project_tasks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
+  title text not null,
+  criticality text not null default 'on_track'
+    check (criticality in ('critical', 'warning', 'on_track')),
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+-- Permanent completion log for *projects* (not project_tasks). Written the
+-- moment a project is ticked done, independent of the live `projects` row's
+-- 24h lifecycle. This is the sole source of truth for the "Projects
+-- completed" statistic once the live row is gone. project_id uses
+-- on delete set null (not cascade) since the whole point is to outlive it.
+create table if not exists project_completions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  project_id uuid references projects(id) on delete set null,
+  title text not null, -- snapshot: survives the project row's deletion
+  completed_at timestamptz not null default now()
+);
+
+alter table projects enable row level security;
+alter table project_tasks enable row level security;
+alter table project_completions enable row level security;
+
+create policy "Users manage their own projects" on projects
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users manage their own project_tasks" on project_tasks
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users manage their own project_completions" on project_completions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create index if not exists project_tasks_project_id_idx on project_tasks (project_id);
