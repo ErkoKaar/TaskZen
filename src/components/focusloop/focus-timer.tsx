@@ -11,6 +11,10 @@ import {
   ChevronDown,
   Pencil,
   Trash2,
+  Clock,
+  Sunrise,
+  Repeat,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TimerRing } from "@/components/focusloop/timer-ring"
@@ -166,204 +170,319 @@ export function FocusTimer() {
     )
   }
 
+  // While a session is running, the right-hand pane reflects the session's
+  // own locked-in config instead of the (still-editable) draft state.
+  const displayFocusMin = session ? session.focusMin : focusMin
+  const displayRestMin = session ? session.restMin : restMin
+  const displayRounds = session ? session.rounds : rounds
+
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-8">
-      {/* Activity picker */}
-      <div className="relative w-full">
-        <button
-          type="button"
-          onClick={() => setPickerOpen((o) => !o)}
-          disabled={!configuring}
-          className={cn(
-            "flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-left transition-colors",
-            configuring ? "hover:bg-secondary" : "opacity-60",
-          )}
-        >
-          <span className="flex items-center gap-3">
-            <span
-              className="h-3 w-3 rounded-full"
-              style={{ backgroundColor: activity.color }}
-            />
-            <span className="text-sm text-muted-foreground">Activity</span>
-            <span className="font-medium text-foreground">{activity.name}</span>
-          </span>
-          <ChevronDown
-            className={cn(
-              "h-4 w-4 text-muted-foreground transition-transform",
-              pickerOpen && "rotate-180",
-            )}
-          />
-        </button>
-
-        {pickerOpen && configuring && (
-          <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-border bg-popover shadow-xl">
-            <div className="max-h-56 overflow-y-auto p-1">
-              {activities.map((a) =>
-                editingId === a.id ? (
-                  <input
-                    key={a.id}
-                    autoFocus
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveEditActivity()
-                      if (e.key === "Escape") setEditingId(null)
-                    }}
-                    onBlur={saveEditActivity}
-                    className="mb-0.5 h-9 w-full rounded-xl bg-secondary px-3 text-sm text-foreground outline-none ring-2 ring-ring"
-                  />
-                ) : (
-                  <div
-                    key={a.id}
-                    className="group flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm hover:bg-secondary"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActivity(a)
-                        setPickerOpen(false)
-                      }}
-                      className="flex flex-1 items-center gap-3 text-left"
-                    >
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: a.color }}
-                      />
-                      {a.name}
-                    </button>
-                    <div className="flex items-center gap-1">
-                      {a.id === activity.id && (
-                        <Check className="h-4 w-4 text-primary" />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => startEditActivity(a)}
-                        className="rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                        aria-label={`Rename ${a.name}`}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      {activities.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeActivity(a.id)}
-                          className="rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
-                          aria-label={`Delete ${a.name}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
-            <div className="flex items-center gap-2 border-t border-border p-2">
-              <input
-                value={newActivity}
-                onChange={(e) => setNewActivity(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addActivity()}
-                placeholder="New activity…"
-                className="h-9 flex-1 rounded-lg bg-secondary px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <Button size="icon" className="h-9 w-9" onClick={addActivity}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <TimerRing
-        progress={progress}
-        secondsLeft={displaySecondsLeft}
-        phase={phase}
-        roundLabel={roundLabel}
+    <div className="relative">
+      {/* Ambient backdrop glow behind the timer half only, purely decorative */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-16 left-0 -z-10 h-[70%] w-[85%] rounded-full opacity-20 blur-[100px]"
+        style={{ background: "linear-gradient(135deg, var(--primary), var(--accent))" }}
       />
 
-      {/* Controls */}
-      <div className="flex w-full items-center justify-center gap-3">
-        {configuring ? (
-          <Button size="lg" className="h-12 flex-1 gap-2 text-base" onClick={start}>
-            <Play className="h-5 w-5" />
-            Start focus
-          </Button>
-        ) : (
-          <>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="h-12 flex-1 gap-2"
-              onClick={session?.running ? pause : resume}
-            >
-              {session?.running ? (
-                <>
-                  <Pause className="h-5 w-5" /> Pause
-                </>
-              ) : (
-                <>
-                  <Play className="h-5 w-5" /> Resume
-                </>
-              )}
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="h-12 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={cancel}
-            >
-              <Square className="h-4 w-4" /> Cancel
-            </Button>
-          </>
-        )}
-      </div>
+      <div className="lg:grid lg:grid-cols-2 lg:items-stretch">
+        {/* Left half: the timer itself */}
+        <div className="relative mx-auto flex w-full max-w-md flex-col items-center gap-6 lg:mx-0 lg:h-full lg:max-w-[560px] lg:justify-center lg:pr-8 xl:max-w-[640px] xl:pr-10">
+          <TimerRing
+            progress={progress}
+            secondsLeft={displaySecondsLeft}
+            phase={phase}
+            roundLabel={roundLabel}
+          />
 
-      {/* Settings */}
-      {configuring && (
-        <div className="w-full space-y-6 rounded-2xl border border-border bg-card p-5">
-          <SliderRow
-            label="Focus duration"
-            value={focusMin}
-            min={5}
-            max={360}
-            step={5}
-            onChange={setFocusMin}
-            display={formatDuration(focusMin)}
+          <RoundDots
+            total={displayRounds}
+            current={session ? session.currentRound : 0}
+            color={phase === "rest" ? "var(--accent)" : "var(--primary)"}
           />
-          <SliderRow
-            label="Rest duration"
-            value={restMin}
-            min={1}
-            max={60}
-            step={1}
-            onChange={setRestMin}
-            display={formatDuration(restMin)}
-          />
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-foreground">Rounds</span>
-            <Stepper value={rounds} min={1} max={12} onChange={setRounds} />
-          </div>
-          <NotificationToggle />
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            The final round ends after focus — no rest. Only focused time is
-            saved to your statistics.
-          </p>
         </div>
-      )}
 
-      {!configuring && (
-        <button
-          onClick={cancel}
-          className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <RotateCcw className="h-4 w-4" /> Reset configuration
-        </button>
-      )}
+        {/* Right half: activity, settings, and actions — a flowing list, no card/box */}
+        <div className="mt-12 lg:mt-0 lg:flex lg:h-full lg:flex-col lg:justify-center lg:border-l lg:border-border lg:pl-16 xl:pl-20">
+          <div className="mx-auto w-full max-w-md lg:mx-0 lg:max-w-lg">
+            <div className="divide-y divide-border">
+              <div className="pb-5">
+                <span className="flex items-center gap-2 text-base font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  <Sparkles className="h-5 w-5" />
+                  {configuring ? "Session settings" : "Active configuration"}
+                </span>
+              </div>
+
+              {/* Activity picker — first row, styled like the settings rows below */}
+              <div className="relative py-5">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen((o) => !o)}
+                  disabled={!configuring}
+                  className={cn(
+                    "flex w-full items-center justify-between text-left transition-opacity",
+                    configuring ? "hover:opacity-80" : "opacity-60",
+                  )}
+                >
+                  <span className="flex items-center gap-2 text-base font-medium text-foreground">
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: activity.color }}
+                    />
+                    Activity
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono text-base text-muted-foreground">{activity.name}</span>
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                        pickerOpen && "rotate-180",
+                      )}
+                    />
+                  </span>
+                </button>
+
+                {pickerOpen && configuring && (
+                  <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-border bg-popover shadow-xl">
+                    <div className="max-h-56 overflow-y-auto p-1">
+                      {activities.map((a) =>
+                        editingId === a.id ? (
+                          <input
+                            key={a.id}
+                            autoFocus
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveEditActivity()
+                              if (e.key === "Escape") setEditingId(null)
+                            }}
+                            onBlur={saveEditActivity}
+                            className="mb-0.5 h-9 w-full rounded-xl bg-secondary px-3 text-sm text-foreground outline-none ring-2 ring-ring"
+                          />
+                        ) : (
+                          <div
+                            key={a.id}
+                            className={cn(
+                              "group flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors hover:bg-secondary",
+                              a.id === activity.id && "bg-secondary/60",
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActivity(a)
+                                setPickerOpen(false)
+                              }}
+                              className="flex flex-1 items-center gap-3 text-left"
+                            >
+                              <span
+                                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: a.color }}
+                              />
+                              {a.name}
+                            </button>
+                            <div className="flex items-center gap-1">
+                              {a.id === activity.id && (
+                                <Check className="h-4 w-4 text-primary" />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => startEditActivity(a)}
+                                className="rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+                                aria-label={`Rename ${a.name}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              {activities.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeActivity(a.id)}
+                                  className="rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+                                  aria-label={`Delete ${a.name}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 border-t border-border p-2">
+                      <input
+                        value={newActivity}
+                        onChange={(e) => setNewActivity(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && addActivity()}
+                        placeholder="New activity…"
+                        className="h-9 flex-1 rounded-lg bg-secondary px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                      <Button size="icon" className="h-9 w-9" onClick={addActivity}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="py-5">
+                <SliderRow
+                  icon={Clock}
+                  label="Focus duration"
+                  value={displayFocusMin}
+                  min={5}
+                  max={360}
+                  step={5}
+                  onChange={setFocusMin}
+                  display={formatDuration(displayFocusMin)}
+                  color="var(--primary)"
+                  disabled={!configuring}
+                />
+              </div>
+              <div className="py-5">
+                <SliderRow
+                  icon={Sunrise}
+                  label="Rest duration"
+                  value={displayRestMin}
+                  min={1}
+                  max={60}
+                  step={1}
+                  onChange={setRestMin}
+                  display={formatDuration(displayRestMin)}
+                  color="var(--accent)"
+                  disabled={!configuring}
+                />
+              </div>
+              <div className="flex items-center justify-between py-5">
+                <span className="flex items-center gap-2 text-base font-medium text-foreground">
+                  <Repeat className="h-5 w-5 text-muted-foreground" />
+                  Rounds
+                </span>
+                <Stepper
+                  value={displayRounds}
+                  min={1}
+                  max={12}
+                  onChange={setRounds}
+                  disabled={!configuring}
+                />
+              </div>
+              <div className="py-5">
+                <NotificationToggle />
+              </div>
+              <div className="py-5">
+                <p className="text-base leading-relaxed text-muted-foreground/80">
+                  The final round ends after focus — no rest. Only focused time is
+                  saved to your statistics.
+                </p>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="mt-8 flex flex-col items-center gap-3">
+              <div className="flex w-full items-center justify-center gap-3">
+                {configuring ? (
+                  <Button
+                    size="lg"
+                    onClick={start}
+                    className={cn(
+                      "h-14 flex-1 gap-2 rounded-xl border-0 text-base font-semibold text-primary-foreground shadow-lg",
+                      "transition-transform motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]",
+                    )}
+                    style={{
+                      background: "linear-gradient(135deg, var(--primary), var(--accent))",
+                      boxShadow: "0 8px 30px -8px color-mix(in oklch, var(--primary) 60%, transparent)",
+                    }}
+                  >
+                    <Play className="h-5 w-5" />
+                    Start focus
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      size="lg"
+                      variant="secondary"
+                      className="h-14 flex-1 gap-2 rounded-xl text-base font-medium"
+                      onClick={session?.running ? pause : resume}
+                    >
+                      {session?.running ? (
+                        <>
+                          <Pause className="h-5 w-5" /> Pause
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-5 w-5" /> Resume
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="h-14 gap-2 rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={cancel}
+                    >
+                      <Square className="h-4 w-4" /> Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              {!configuring && (
+                <button
+                  onClick={cancel}
+                  className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <RotateCcw className="h-4 w-4" /> Reset configuration
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RoundDots({
+  total,
+  current,
+  color,
+}: {
+  total: number
+  current: number
+  color: string
+}) {
+  return (
+    <div className="flex items-center justify-center gap-2.5">
+      {Array.from({ length: total }, (_, i) => {
+        const roundNumber = i + 1
+        const completed = current > roundNumber
+        const active = current === roundNumber
+        return (
+          <span
+            key={roundNumber}
+            className={cn(
+              "rounded-full transition-all",
+              active ? "h-3 w-3 motion-safe:animate-[pulse-glow_2s_ease-in-out_infinite]" : "h-2.5 w-2.5",
+              !completed && !active && "bg-secondary",
+            )}
+            style={
+              completed || active
+                ? {
+                    backgroundColor: color,
+                    boxShadow: active
+                      ? `0 0 8px 1px color-mix(in oklch, ${color} 60%, transparent)`
+                      : undefined,
+                  }
+                : undefined
+            }
+          />
+        )
+      })}
     </div>
   )
 }
 
 function SliderRow({
+  icon: Icon,
   label,
   value,
   min,
@@ -371,7 +490,10 @@ function SliderRow({
   step,
   onChange,
   display,
+  color,
+  disabled = false,
 }: {
+  icon: React.ElementType
   label: string
   value: number
   min: number
@@ -379,12 +501,18 @@ function SliderRow({
   step: number
   onChange: (v: number) => void
   display: string
+  color: string
+  disabled?: boolean
 }) {
+  const pct = ((value - min) / (max - min)) * 100
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2.5", disabled && "opacity-50")}>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        <span className="font-mono text-sm tabular-nums text-primary">
+        <span className="flex items-center gap-2 text-base font-medium text-foreground">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          {label}
+        </span>
+        <span className="font-mono text-base tabular-nums" style={{ color }}>
           {display}
         </span>
       </div>
@@ -395,8 +523,17 @@ function SliderRow({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-2 w-full cursor-pointer appearance-none rounded-full bg-secondary accent-primary [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4"
-        style={{ accentColor: "var(--primary)" }}
+        disabled={disabled}
+        className={cn(
+          "h-2.5 w-full cursor-pointer appearance-none rounded-full disabled:cursor-not-allowed disabled:pointer-events-none",
+          "[&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none",
+          "[&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background",
+          "[&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-background",
+        )}
+        style={{
+          background: `linear-gradient(to right, ${color} ${pct}%, var(--secondary) ${pct}%)`,
+          accentColor: color,
+        }}
       />
     </div>
   )
@@ -407,31 +544,38 @@ function Stepper({
   min,
   max,
   onChange,
+  disabled = false,
 }: {
   value: number
   min: number
   max: number
   onChange: (v: number) => void
+  disabled?: boolean
 }) {
   return (
-    <div className="flex items-center gap-1 rounded-xl border border-border bg-secondary p-1">
+    <div
+      className={cn(
+        "flex items-center gap-1 rounded-full border border-border bg-secondary p-1",
+        disabled && "opacity-50",
+      )}
+    >
       <button
         type="button"
         onClick={() => onChange(Math.max(min, value - 1))}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-lg text-foreground transition-colors hover:bg-card disabled:opacity-40"
-        disabled={value <= min}
+        className="flex h-9 w-9 items-center justify-center rounded-full text-xl text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-40"
+        disabled={disabled || value <= min}
         aria-label="Decrease rounds"
       >
         −
       </button>
-      <span className="w-8 text-center font-mono text-sm tabular-nums text-foreground">
+      <span className="w-9 text-center font-mono text-base tabular-nums text-foreground">
         {value}
       </span>
       <button
         type="button"
         onClick={() => onChange(Math.min(max, value + 1))}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-lg text-foreground transition-colors hover:bg-card disabled:opacity-40"
-        disabled={value >= max}
+        className="flex h-9 w-9 items-center justify-center rounded-full text-xl text-foreground transition-colors hover:bg-card disabled:pointer-events-none disabled:opacity-40"
+        disabled={disabled || value >= max}
         aria-label="Increase rounds"
       >
         +
@@ -453,8 +597,16 @@ function CompletionCard({
 }) {
   const minutes = Math.round(focusedSeconds / 60)
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-6 rounded-3xl border border-border bg-card p-8 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/15 text-primary">
+    <div className="relative mx-auto flex w-full max-w-md flex-col items-center gap-6 p-8 text-center">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 rounded-3xl opacity-25 blur-2xl"
+        style={{ background: "linear-gradient(135deg, var(--primary), var(--accent))" }}
+      />
+      <div
+        className="flex h-16 w-16 items-center justify-center rounded-full text-primary-foreground shadow-lg motion-safe:animate-[pulse-glow_3s_ease-in-out_infinite]"
+        style={{ background: "linear-gradient(135deg, var(--primary), var(--accent))" }}
+      >
         <Check className="h-8 w-8" />
       </div>
       <div className="space-y-2">
@@ -467,7 +619,12 @@ function CompletionCard({
           and stayed focused for {formatDuration(minutes)}.
         </p>
       </div>
-      <Button size="lg" className="gap-2" onClick={onReset}>
+      <Button
+        size="lg"
+        className="gap-2 rounded-full border-0 text-primary-foreground"
+        style={{ background: "linear-gradient(135deg, var(--primary), var(--accent))" }}
+        onClick={onReset}
+      >
         <RotateCcw className="h-4 w-4" /> New session
       </Button>
     </div>
