@@ -74,16 +74,31 @@ export function NotificationToggle() {
       type="button"
       onClick={subscribed ? disable : enable}
       disabled={busy}
+      aria-pressed={subscribed}
       className={cn(
-        "flex w-full items-center justify-between rounded-xl border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-secondary disabled:opacity-60",
+        "flex min-h-11 w-full items-center justify-between text-base transition-opacity hover:opacity-80 disabled:opacity-60",
       )}
     >
       <span className="flex items-center gap-2 text-foreground">
-        {subscribed ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+        {subscribed ? (
+          <Bell className="h-5 w-5 text-primary" />
+        ) : (
+          <BellOff className="h-5 w-5 text-muted-foreground" />
+        )}
         Notify when timer ends
       </span>
-      <span className="text-xs text-muted-foreground">
-        {subscribed ? "On" : "Off"}
+      <span
+        className={cn(
+          "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+          subscribed ? "bg-primary" : "bg-border-strong",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform",
+            subscribed ? "translate-x-[22px]" : "translate-x-0.5",
+          )}
+        />
       </span>
     </button>
   )
