@@ -137,7 +137,7 @@ export function StatisticsView() {
                         <span className="font-mono text-sm text-muted-foreground">{i + 1}</span>
                       )}
                     </span>
-                    <span className="flex-1 truncate text-sm font-medium text-foreground">
+                    <span className="min-w-0 flex-1 break-words text-sm font-medium text-foreground">
                       {s.activity.name}
                     </span>
                     <span className="font-mono text-sm tabular-nums text-muted-foreground">
@@ -179,7 +179,7 @@ function HeroStat({
       </div>
       <div className="mt-2 flex items-center gap-2.5">
         {swatch && <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: swatch }} />}
-        <span className="truncate font-mono text-4xl font-bold tabular-nums text-foreground">
+        <span className="min-w-0 break-words font-mono text-4xl font-bold tabular-nums text-foreground">
           {value}
         </span>
       </div>
