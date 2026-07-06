@@ -128,7 +128,7 @@ export default function TasksPage() {
               </div>
             </div>
 
-            <aside className="lg:sticky lg:top-24">
+            <aside className="hidden lg:sticky lg:top-24 lg:block">
               <PeriodSummary label="This week" days={days} state={state} />
             </aside>
           </div>
