@@ -29,8 +29,7 @@ yarn-error.log*
 .env*
 !.env*.example
 
-# vercel
-.vercel
+
 
 # supabase CLI local state
 supabase/.temp/
@@ -39,6 +38,7 @@ supabase/.temp/
 *.tsbuildinfo
 next-env.d.ts
 
-# IDE
-.idea/
+
 .claude/
+
+
