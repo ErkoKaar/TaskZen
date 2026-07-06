@@ -1,17 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
+import Image from "next/image"
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import {
   fmtDate,
   fmtShort,
@@ -20,6 +11,7 @@ import {
   parseDate,
   useStore,
 } from "@/lib/tasks/store"
+import { useProjectsStore } from "@/lib/tasks/projects-store"
 import { SiteHeader } from "@/components/site-header"
 import { TasksNavTabs } from "@/components/tasks/nav-tabs"
 import { ViewTabs, type ViewKey } from "@/components/tasks/view-tabs"
@@ -27,7 +19,11 @@ import { ViewTabs, type ViewKey } from "@/components/tasks/view-tabs"
 export default function StatisticsPage() {
   const [view, setView] = useState<ViewKey>("week")
   const { state } = useStore()
-  const range = useMemo(() => getRange(view, state), [view, state])
+  const { state: projectsState } = useProjectsStore()
+  const range = useMemo(
+    () => getRange(view, state, projectsState.completions.map((c) => c.completedAt)),
+    [view, state, projectsState],
+  )
 
   const inRange = (date: string) => {
     const d = parseDate(date)
@@ -89,17 +85,14 @@ export default function StatisticsPage() {
   const completion =
     possible > 0 ? Math.round((habitChecksInRange.length / possible) * 100) : 0
 
-  const exportJson = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], {
-      type: "application/json",
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `taskmanager-${fmtDate(new Date())}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  // range.end is midnight of the last day (day-granularity, matching how
+  // task/habit dates work); completedAt is a precise timestamp, so extend
+  // the boundary to the end of that day or same-day completions would be
+  // excluded (e.g. "All time" ends at *today* 00:00).
+  const rangeEndMs = range.end.getTime() + 24 * 60 * 60 * 1000 - 1
+  const projectsCompletedInRange = projectsState.completions.filter(
+    (c) => c.completedAt >= range.start.getTime() && c.completedAt <= rangeEndMs,
+  )
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -108,24 +101,19 @@ export default function StatisticsPage() {
       </SiteHeader>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
-        <div className="space-y-6">
+        <div className="space-y-10">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Statistics</h1>
-              <p className="mt-1 text-sm text-muted-foreground">{range.label}</p>
+              <div className="flex items-center gap-3">
+                <Image src="/icons/statistics.svg" alt="" width={30} height={30} className="h-[30px] w-[30px]" />
+                <h1 className="text-[30px] font-semibold tracking-tight text-foreground">Statistics</h1>
+              </div>
+              <p className="mt-1.5 text-base text-muted-foreground">{range.label}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={exportJson}
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                Export JSON
-              </button>
-              <ViewTabs value={view} onChange={setView} />
-            </div>
+            <ViewTabs value={view} onChange={setView} />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-6 border-b border-border pb-8 lg:grid-cols-5">
             <KPI
               label="Habit completion"
               value={`${completion}%`}
@@ -142,15 +130,38 @@ export default function StatisticsPage() {
               value={`${habitChecksInRange.length}`}
               hint={`of ${possible}`}
             />
+            <KPI
+              label="Projects completed"
+              value={`${projectsCompletedInRange.length}`}
+              hint={`${projectsState.completions.length} all-time`}
+            />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-8 lg:grid-cols-2">
             <ChartCard title="Habit completion %">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dayData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="label" stroke="var(--muted-foreground)" fontSize={11} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={11} domain={[0, 100]} />
+                <AreaChart data={dayData}>
+                  <defs>
+                    <linearGradient id="habitTrendFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.32} />
+                      <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    stroke="var(--muted-foreground)"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="var(--muted-foreground)"
+                    fontSize={11}
+                    domain={[0, 100]}
+                    tickLine={false}
+                    axisLine={false}
+                  />
                   <Tooltip
                     contentStyle={{
                       background: "var(--popover)",
@@ -159,24 +170,45 @@ export default function StatisticsPage() {
                       fontSize: 12,
                       color: "var(--foreground)",
                     }}
+                    formatter={(value) => `${value}%`}
                   />
-                  <Line
+                  <Area
                     type="monotone"
                     dataKey="habits"
-                    stroke="var(--chart-1)"
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: "var(--chart-1)" }}
+                    stroke="var(--chart-2)"
+                    strokeWidth={2.5}
+                    fill="url(#habitTrendFill)"
+                    dot={{ r: 3, fill: "var(--chart-2)", strokeWidth: 0 }}
+                    activeDot={{ r: 5 }}
                   />
-                </LineChart>
+                </AreaChart>
               </ResponsiveContainer>
             </ChartCard>
 
             <ChartCard title="Tasks completed per day">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dayData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="label" stroke="var(--muted-foreground)" fontSize={11} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={11} allowDecimals={false} />
+                <AreaChart data={dayData}>
+                  <defs>
+                    <linearGradient id="taskTrendFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--chart-4)" stopOpacity={0.32} />
+                      <stop offset="100%" stopColor="var(--chart-4)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    stroke="var(--muted-foreground)"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="var(--muted-foreground)"
+                    fontSize={11}
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                  />
                   <Tooltip
                     contentStyle={{
                       background: "var(--popover)",
@@ -186,26 +218,31 @@ export default function StatisticsPage() {
                       color: "var(--foreground)",
                     }}
                   />
-                  <Bar dataKey="tasks" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Area
+                    type="monotone"
+                    dataKey="tasks"
+                    stroke="var(--chart-4)"
+                    strokeWidth={2.5}
+                    fill="url(#taskTrendFill)"
+                    dot={{ r: 3, fill: "var(--chart-4)", strokeWidth: 0 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             </ChartCard>
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-5">
-            <h2 className="text-sm font-medium text-foreground">
+          <div>
+            <h2 className="font-nav text-[11px] uppercase tracking-wider text-muted-foreground/80">
               Tasks completed — {range.label.toLowerCase()}
             </h2>
-            <div className="mt-3 space-y-1">
+            <div className="mt-1 divide-y divide-border">
               {completedTasks.length === 0 && (
-                <p className="text-sm text-muted-foreground">No completed tasks in this range.</p>
+                <p className="py-2 text-sm text-muted-foreground">No completed tasks in this range.</p>
               )}
               {completedTasks.map((t) => (
-                <div
-                  key={t.id}
-                  className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-accent/40"
-                >
-                  <span className="text-muted-foreground tabular-nums text-xs w-24">
+                <div key={t.id} className="flex items-center gap-3 py-2.5 text-sm">
+                  <span className="w-24 text-xs tabular-nums text-muted-foreground">
                     {fmtShort(parseDate(t.date))}
                   </span>
                   <span className="flex-1">{t.title}</span>
@@ -221,9 +258,9 @@ export default function StatisticsPage() {
 
 function KPI({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-2 text-3xl font-semibold tabular-nums text-foreground">{value}</div>
+    <div>
+      <div className="font-nav text-[11px] uppercase tracking-wider text-muted-foreground/80">{label}</div>
+      <div className="mt-2 truncate font-mono text-3xl font-bold tabular-nums text-foreground">{value}</div>
       {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
     </div>
   )
@@ -231,9 +268,9 @@ function KPI({ label, value, hint }: { label: string; value: string; hint?: stri
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <h2 className="text-sm font-medium text-foreground">{title}</h2>
-      <div className="mt-4 h-56">{children}</div>
+    <div>
+      <h2 className="mb-4 font-nav text-[11px] uppercase tracking-wider text-muted-foreground/80">{title}</h2>
+      <div className="h-56">{children}</div>
     </div>
   )
 }
