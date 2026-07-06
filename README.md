@@ -2,30 +2,52 @@
 
 A Next.js + Supabase app combining two tools under one shell, switchable from the navbar:
 
-- **FocusLoop** — circular Pomodoro-style focus timer with custom activities, statistics, sound
-  effects, and server-scheduled push notifications (work even with a locked screen).
-- **Task Manager** — daily tasks, habits (with streaks, archive/restore), and statistics.
+- **Task Manager** (app root, `/`) — daily tasks, projects (drag-and-drop reordering, done/delete
+  actions), habits (with streaks, archive/restore), and statistics.
+- **FocusLoop** (`/focus`) — circular Pomodoro-style focus timer with custom activities,
+  statistics, sound effects, and server-scheduled push notifications (work even with a locked
+  screen).
 
 Installable as a PWA. All data is scoped per-user via Supabase Auth (username-based login) and
 Postgres Row Level Security.
+
+## Screenshots
+
+**Task Manager**
+
+| Tasks | Projects |
+|---|---|
+| ![Tasks view](public/Tasks_View.png) | ![Projects view](public/Projects_View.png) |
+
+| Habits | Statistics |
+|---|---|
+| ![Habits view](public/Habits_View.png) | ![Statistics view](public/Stats1_View.png) |
+
+**FocusLoop**
+
+| Timer | Statistics |
+|---|---|
+| ![Timer view](public/Timer_View.png) | ![Statistics view](public/Stats2_View.png) |
 
 ## Features
 
 - **Username-based auth** (Supabase Auth under the hood) — sign in with a username, not an email;
   the server resolves username → email via an admin client before authenticating.
+- **Task Manager** — daily tasks scoped by date, projects with drag-and-drop reordering and
+  done/delete actions, habits with streak tracking and archive/restore, and a statistics view.
 - **FocusLoop** — custom focus/rest activities, a circular countdown timer, sound effects on phase
   change, and a statistics view of past sessions.
-- **Task Manager** — daily tasks scoped by date, habits with streak tracking and archive/restore,
-  and a statistics view.
 - **Push notifications** — scheduled server-side (Supabase Edge Function on a `pg_cron` schedule)
   so reminders fire even with the app closed or the screen locked, rather than relying on a
   client-side timer.
-- **PWA** — installable on phone or desktop, with a custom service worker.
+- **PWA** — installable on phone or desktop, with a custom service worker and a branded loading
+  splash on cold start.
 
 ## Tech stack
 
 **Frontend** — Next.js 16 (App Router, Turbopack), React 19, TypeScript, Tailwind CSS v4,
-shadcn/ui, Recharts (statistics charts), lucide-react (icons).
+shadcn/ui, Recharts (statistics charts), @dnd-kit (drag-and-drop project reordering),
+lucide-react (icons).
 
 **Backend** — [Supabase](https://supabase.com): Postgres (all tables behind Row Level Security —
 every row scoped to the authenticated user), Supabase Auth, and one Deno Edge Function
@@ -41,22 +63,25 @@ like username → email resolution and notification scheduling).
 ```
 src/
   app/
-    page.tsx                 FocusLoop (home route)
-    tasks/                   Task Manager: tasks, habits, statistics
+    page.tsx                 Redirects to /tasks (Task Manager is the app root)
+    focus/                   FocusLoop: timer + statistics
+    tasks/                   Task Manager: tasks, projects, habits, statistics
     login/, register/        Username-based auth pages
-    api/schedule-notifications/  Route Handler: schedules push notifications server-side
+    api/notify/, api/schedule-notifications/  Route Handlers for push notifications
     manifest.ts              PWA manifest
   components/
-    focusloop/                FocusTimer, TimerRing, StatisticsView, notification toggle
-    tasks/                    NavTabs, ViewTabs
+    focusloop/                FocusTimer, TimerRing, RingParticles, StatisticsView, notification toggle
+    tasks/                    NavTabs, ViewTabs, CheckBox, CriticalityPicker, GhostInput
     ui/                       shadcn/ui components
-    app-switcher.tsx          Navbar switch between FocusLoop and Task Manager
+    app-switcher.tsx          Navbar switch between Task Manager and FocusLoop
+    site-nav-tabs.tsx         Shared sliding/mobile nav tabs used by both apps
+    app-splash.tsx            Full-screen splash shown until the initial session check resolves
     site-header.tsx, register-service-worker.tsx
   lib/
     supabase/                 client.ts, server.ts, admin.ts (service role), middleware.ts
     auth/actions.ts            signIn/signUp/signOut server actions (username → email resolution)
     focusloop/                 activities, session data, sound effects
-    tasks/store.ts              Tasks/habits/habitLogs state, synced via Supabase
+    tasks/store.ts, projects-store.ts   Tasks/habits and Projects state, synced via Supabase
     notifications/              rescheduleNotifications() + phase-based reminder computation
   proxy.ts                    Refreshes the Supabase session on matching requests (Next.js 16
                                renamed `middleware.ts` to `proxy.ts`)
@@ -67,6 +92,7 @@ supabase/
     send-due-notifications/   Edge Function that sends due push notifications via web-push
 public/
   sw.js                       Custom service worker (PWA caching + push notification handling)
+  icons/                      Colored section icons for Tasks/Habits/Projects/Statistics titles
 ```
 
 ## Getting started
@@ -134,3 +160,7 @@ settings, then push to the connected branch.
   schedule to `/api/schedule-notifications`, which writes rows into `scheduled_notifications`;
   delivery is handled entirely by the `send-due-notifications` Edge Function on its `pg_cron`
   schedule, so reminders still fire if the tab is closed or the screen is locked.
+
+## License
+
+[GPL-3.0](LICENSE)
