@@ -11,16 +11,14 @@ import { createClient } from "@/lib/supabase/client"
 
 const APPS = [
   { id: "taskmanager", label: "Task Manager", href: "/tasks" },
-  { id: "focusloop", label: "FocusLoop", href: "/" },
+  { id: "focusloop", label: "FocusLoop", href: "/focus" },
 ]
 
 export function AppSwitcher() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [username, setUsername] = useState<string | null>(null)
-  const current =
-    APPS.find((a) => a.href !== "/" && pathname.startsWith(a.href)) ??
-    APPS.find((a) => a.id === "focusloop")!
+  const current = APPS.find((a) => pathname.startsWith(a.href)) ?? APPS[0]
 
   useEffect(() => {
     const supabase = createClient()
