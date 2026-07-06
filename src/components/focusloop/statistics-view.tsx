@@ -1,42 +1,49 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Award, Clock, Flame, Medal, Trophy } from "lucide-react"
-import { TIME_RANGES, type TimeRange, formatDuration } from "@/lib/focusloop/data"
-import { getStats, type ActivityStat } from "@/lib/focusloop/sessions"
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts"
+import { Award, Medal, Trophy } from "lucide-react"
+import { TIME_RANGES, type TimeRange, formatDayLabel, formatDuration } from "@/lib/focusloop/data"
+import { getStats, getDailyStats, type ActivityStat, type DailyTotal } from "@/lib/focusloop/sessions"
 import { cn } from "@/lib/utils"
 
 const MEDALS = [
-  { icon: Trophy, color: "var(--gold)", label: "1st" },
-  { icon: Medal, color: "var(--silver)", label: "2nd" },
-  { icon: Award, color: "var(--bronze)", label: "3rd" },
+  { icon: Trophy, color: "var(--gold)" },
+  { icon: Medal, color: "var(--silver)" },
+  { icon: Award, color: "var(--bronze)" },
 ]
 
 export function StatisticsView() {
   const [range, setRange] = useState<TimeRange>("week")
   const [stats, setStats] = useState<ActivityStat[]>([])
+  const [days, setDays] = useState<DailyTotal[]>([])
+  const [sessionCount, setSessionCount] = useState(0)
 
   useEffect(() => {
     getStats(range)
       .then(setStats)
       .catch((err) => console.error("Failed to load statistics", err))
+    getDailyStats(range)
+      .then(({ days, sessionCount }) => {
+        setDays(days)
+        setSessionCount(sessionCount)
+      })
+      .catch((err) => console.error("Failed to load daily statistics", err))
   }, [range])
 
   const total = stats.reduce((sum, s) => sum + s.minutes, 0)
   const max = Math.max(...stats.map((s) => s.minutes), 1)
-  const top3 = stats.slice(0, 3)
-  const rest = stats.slice(3)
+  const chartData = days.map((d) => ({ ...d, label: formatDayLabel(d.date, range) }))
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      {/* Range filter */}
-      <div className="flex flex-wrap gap-1 rounded-2xl border border-border bg-card p-1">
+    <div className="flex flex-col gap-10">
+      <div className="flex flex-wrap gap-2">
         {TIME_RANGES.map((r) => (
           <button
             key={r.id}
             onClick={() => setRange(r.id)}
             className={cn(
-              "flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
               range === r.id
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground",
@@ -47,148 +54,135 @@ export function StatisticsView() {
         ))}
       </div>
 
-      {/* Summary tiles */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <SummaryTile
-          icon={Clock}
-          label="Total focus"
-          value={formatDuration(total)}
-        />
-        <SummaryTile
-          icon={Flame}
-          label="Activities"
-          value={String(stats.length)}
-        />
-        <SummaryTile
-          icon={Trophy}
+      {/* Hero readout — same Martian Mono treatment as the timer's own digits */}
+      <div className="grid grid-cols-3 gap-6 border-b border-border pb-8">
+        <HeroStat label="Total focus" value={formatDuration(total)} />
+        <HeroStat label="Sessions" value={String(sessionCount)} />
+        <HeroStat
           label="Top activity"
-          value={top3[0]?.activity.name ?? "—"}
-          className="col-span-2 sm:col-span-1"
+          value={stats[0]?.activity.name ?? "—"}
+          swatch={stats[0]?.activity.color}
         />
       </div>
 
-      {/* Top 3 podium */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {top3.map((s, i) => {
-          const Icon = MEDALS[i].icon
-          return (
-            <div
-              key={s.activity.id}
-              className="relative overflow-hidden rounded-2xl border border-border bg-card p-4"
-              style={{
-                boxShadow: `inset 0 0 0 1px color-mix(in oklch, ${MEDALS[i].color} 30%, transparent)`,
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <Icon className="h-5 w-5" style={{ color: MEDALS[i].color }} />
-                <span
-                  className="text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: MEDALS[i].color }}
-                >
-                  {MEDALS[i].label}
-                </span>
-              </div>
-              <p className="mt-3 truncate text-lg font-semibold text-foreground">
-                {s.activity.name}
-              </p>
-              <p className="font-mono text-sm tabular-nums text-muted-foreground">
-                {formatDuration(s.minutes)}
-              </p>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Bar chart */}
-      <div className="rounded-2xl border border-border bg-card p-5">
-        <h3 className="mb-4 text-sm font-medium text-muted-foreground">
-          Focus time by activity
-        </h3>
-        <div className="flex flex-col gap-3">
-          {stats.map((s) => (
-            <div key={s.activity.id} className="flex items-center gap-3">
-              <span className="w-28 shrink-0 truncate text-sm text-foreground">
-                {s.activity.name}
-              </span>
-              <div className="h-7 flex-1 overflow-hidden rounded-lg bg-secondary">
-                <div
-                  className="flex h-full items-center justify-end rounded-lg px-2 transition-[width] duration-500"
-                  style={{
-                    width: `${Math.max((s.minutes / max) * 100, 6)}%`,
-                    backgroundColor: s.activity.color,
-                  }}
-                >
-                  <span className="font-mono text-xs font-medium tabular-nums text-background">
-                    {formatDuration(s.minutes)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Remaining list */}
-      {rest.length > 0 && (
-        <div className="rounded-2xl border border-border bg-card">
-          {rest.map((s, i) => (
-            <div
-              key={s.activity.id}
-              className={cn(
-                "flex items-center justify-between px-4 py-3",
-                i !== rest.length - 1 && "border-b border-border",
-              )}
-            >
-              <span className="flex items-center gap-3">
-                <span className="w-6 text-center font-mono text-sm text-muted-foreground">
-                  {i + 4}
-                </span>
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: s.activity.color }}
+      <div className="lg:grid lg:grid-cols-[1.6fr_1fr] lg:items-start lg:gap-10">
+        <div>
+          <h3 className="mb-4 font-nav text-[11px] uppercase tracking-wider text-muted-foreground/80">
+            Focus minutes per day
+          </h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="focusTrendStroke" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="var(--primary)" />
+                    <stop offset="100%" stopColor="var(--accent)" />
+                  </linearGradient>
+                  <linearGradient id="focusTrendFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.32} />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  stroke="var(--muted-foreground)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
                 />
-                <span className="text-sm font-medium text-foreground">
-                  {s.activity.name}
-                </span>
-              </span>
-              <span className="font-mono text-sm tabular-nums text-muted-foreground">
-                {formatDuration(s.minutes)}
-              </span>
-            </div>
-          ))}
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--popover)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    color: "var(--foreground)",
+                  }}
+                  formatter={(value) => formatDuration(Number(value))}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="minutes"
+                  stroke="url(#focusTrendStroke)"
+                  strokeWidth={2.5}
+                  fill="url(#focusTrendFill)"
+                  dot={{ r: 3, fill: "var(--primary)", strokeWidth: 0 }}
+                  activeDot={{ r: 5 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      )}
+
+        <div className="mt-12 lg:mt-0">
+          <h3 className="mb-4 font-nav text-[11px] uppercase tracking-wider text-muted-foreground/80">
+            Focus time by activity
+          </h3>
+
+          {stats.length === 0 ? (
+            <p className="py-8 text-base text-muted-foreground">
+              No focus sessions yet for this range.
+            </p>
+          ) : (
+            <div className="divide-y divide-border">
+              {stats.map((s, i) => {
+                const medal = MEDALS[i]
+                return (
+                  <div key={s.activity.id} className="flex items-center gap-3 py-3.5">
+                    <span className="flex w-6 shrink-0 items-center justify-center">
+                      {medal ? (
+                        <medal.icon className="h-5 w-5" style={{ color: medal.color }} />
+                      ) : (
+                        <span className="font-mono text-sm text-muted-foreground">{i + 1}</span>
+                      )}
+                    </span>
+                    <span className="flex-1 truncate text-sm font-medium text-foreground">
+                      {s.activity.name}
+                    </span>
+                    <span className="font-mono text-sm tabular-nums text-muted-foreground">
+                      {formatDuration(s.minutes)}
+                    </span>
+                    <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full transition-[width] duration-500"
+                        style={{
+                          width: `${Math.max((s.minutes / max) * 100, 6)}%`,
+                          backgroundColor: s.activity.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
-function SummaryTile({
-  icon: Icon,
+function HeroStat({
   label,
   value,
-  className,
+  swatch,
 }: {
-  icon: React.ElementType
   label: string
   value: string
-  className?: string
+  swatch?: string
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-2xl border border-border bg-card p-4",
-        className,
-      )}
-    >
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="h-4 w-4" />
-        <span className="text-xs font-medium uppercase tracking-wider">
-          {label}
+    <div>
+      <div className="font-nav text-[11px] uppercase tracking-wider text-muted-foreground/80">
+        {label}
+      </div>
+      <div className="mt-2 flex items-center gap-2.5">
+        {swatch && <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: swatch }} />}
+        <span className="truncate font-mono text-4xl font-bold tabular-nums text-foreground">
+          {value}
         </span>
       </div>
-      <p className="mt-2 truncate text-xl font-semibold text-foreground">
-        {value}
-      </p>
     </div>
   )
 }

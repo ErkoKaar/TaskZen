@@ -15,6 +15,14 @@ export function formatDuration(minutes: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`
 }
 
+export function formatDayLabel(dateStr: string, range: TimeRange): string {
+  const d = new Date(`${dateStr}T00:00:00`)
+  if (range === "year" || range === "all") {
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  }
+  return d.toLocaleDateString("en-US", { weekday: "short" })
+}
+
 export function formatClock(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60

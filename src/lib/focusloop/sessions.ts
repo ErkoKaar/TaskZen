@@ -78,3 +78,45 @@ export async function getStats(range: TimeRange): Promise<ActivityStat[]> {
     .map(({ activity, seconds }) => ({ activity, minutes: Math.round(seconds / 60) }))
     .sort((a, b) => b.minutes - a.minutes)
 }
+
+export type DailyTotal = { date: string; minutes: number }
+export type DailyStats = { days: DailyTotal[]; sessionCount: number }
+
+export async function getDailyStats(range: TimeRange): Promise<DailyStats> {
+  const supabase = createClient()
+  const start = rangeStartDate(range)
+
+  let query = supabase.from("focus_sessions").select("focused_seconds, completed_at")
+  if (start) query = query.gte("completed_at", start.toISOString())
+
+  const { data, error } = await query
+  if (error) throw error
+
+  const rows = (data ?? []) as { focused_seconds: number; completed_at: string }[]
+  const secondsByDate = new Map<string, number>()
+  for (const row of rows) {
+    const date = row.completed_at.slice(0, 10)
+    secondsByDate.set(date, (secondsByDate.get(date) ?? 0) + row.focused_seconds)
+  }
+
+  if (!start) {
+    // "All time" — just the days that actually have sessions, oldest first.
+    const days = [...secondsByDate.entries()]
+      .map(([date, seconds]) => ({ date, minutes: Math.round(seconds / 60) }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+    return { days, sessionCount: rows.length }
+  }
+
+  // Zero-fill every day in range so the trend line has a continuous shape,
+  // not just sparse points on days that happened to have a session.
+  const days: DailyTotal[] = []
+  const cursor = new Date(start)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  while (cursor <= today) {
+    const key = cursor.toISOString().slice(0, 10)
+    days.push({ date: key, minutes: Math.round((secondsByDate.get(key) ?? 0) / 60) })
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return { days, sessionCount: rows.length }
+}
