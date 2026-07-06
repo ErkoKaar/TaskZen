@@ -117,12 +117,13 @@ export function SiteNavTabs({
                   </Link>
                 )
               }
+              const onClick = item.onClick
               return (
                 <button
                   key={item.key}
                   type="button"
                   onClick={() => {
-                    item.onClick()
+                    onClick?.()
                     setMobileOpen(false)
                   }}
                   className={className}
