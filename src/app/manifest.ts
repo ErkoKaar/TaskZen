@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Focus timer and task/habit manager.",
     start_url: "/tasks",
     display: "standalone",
-    background_color: "#0c0e16",
-    theme_color: "#0c0e16",
+    background_color: "#0b0e13",
+    theme_color: "#0b0e13",
     icons: [
       {
         src: "/icon-192.png",

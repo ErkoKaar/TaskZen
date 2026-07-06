@@ -72,6 +72,7 @@ export function liveSecondsLeft(session: ActiveSession, now: number = Date.now()
 type FocusTimerContextValue = {
   session: ActiveSession | null
   secondsLeft: number
+  ready: boolean
   start: (input: { activityId: string; focusMin: number; restMin: number; rounds: number }) => Promise<void>
   pause: () => Promise<void>
   resume: () => Promise<void>
@@ -94,6 +95,7 @@ export function useFocusTimer(): FocusTimerContextValue {
 export function FocusTimerProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<ActiveSession | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
+  const [ready, setReady] = useState(false)
   const sessionRef = useRef<ActiveSession | null>(null)
   const uidRef = useRef<string | null>(null)
   const prevPhaseRef = useRef<TimerPhase | null>(null)
@@ -135,7 +137,11 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         .subscribe()
     }
 
-    init().catch((err) => console.error("Failed to init focus timer store", err))
+    init()
+      .catch((err) => console.error("Failed to init focus timer store", err))
+      .finally(() => {
+        if (active) setReady(true)
+      })
     return () => {
       active = false
       if (channel) supabase.removeChannel(channel)
@@ -411,7 +417,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
 
   return (
     <FocusTimerContext.Provider
-      value={{ session, secondsLeft, start, pause, resume, cancel, dismissCompletion }}
+      value={{ session, secondsLeft, ready, start, pause, resume, cancel, dismissCompletion }}
     >
       {children}
     </FocusTimerContext.Provider>

@@ -53,6 +53,7 @@ export function FocusTimer() {
   const {
     session,
     secondsLeft,
+    ready,
     start: startSession,
     pause,
     resume,
@@ -143,7 +144,7 @@ export function FocusTimer() {
       .catch((err) => console.error("Failed to rename activity", err))
   }
 
-  if (!activity) {
+  if (!activity || !ready) {
     return (
       <p className="mx-auto text-center text-sm text-muted-foreground">
         Loading activities…

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Martian_Mono } from "next/font/google";
 import { RegisterServiceWorker } from "@/components/register-service-worker";
+import { AppSplash } from "@/components/app-splash";
 import { FocusTimerProvider } from "@/lib/focusloop/timer-store";
 import "./globals.css";
 
@@ -70,7 +71,10 @@ export default function RootLayout({
           }}
         />
         <RegisterServiceWorker />
-        <FocusTimerProvider>{children}</FocusTimerProvider>
+        <FocusTimerProvider>
+          <AppSplash />
+          {children}
+        </FocusTimerProvider>
       </body>
     </html>
   );
