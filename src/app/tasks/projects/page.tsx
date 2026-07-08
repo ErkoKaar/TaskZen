@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useMemo, useState } from "react"
 import Image from "next/image"
 import { Check, ChevronDown, GripVertical, Trash2 } from "lucide-react"
 import {
@@ -12,7 +12,6 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragOverEvent,
 } from "@dnd-kit/core"
 import {
   SortableContext,
@@ -85,13 +84,14 @@ export default function ProjectsPage() {
   } = useProjectsStore()
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [columns, setColumns] = useState<Record<ProjectSection, string[]>>({
-    projects: [],
-    personal: [],
-  })
 
-  useEffect(() => {
-    setColumns({
+  // Derived from state.projects, memoized so the arrays only get new
+  // references when state.projects itself actually changes — a plain
+  // recompute-every-render version handed dnd-kit's SortableContext a new
+  // `items` array on every single render (even ones unrelated to project
+  // data), which was enough to keep it re-registering and re-rendering.
+  const columns: Record<ProjectSection, string[]> = useMemo(
+    () => ({
       projects: state.projects
         .filter((p) => p.section === "projects")
         .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -100,8 +100,9 @@ export default function ProjectsPage() {
         .filter((p) => p.section === "personal")
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((p) => p.id),
-    })
-  }, [state.projects])
+    }),
+    [state.projects],
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -131,58 +132,48 @@ export default function ProjectsPage() {
     if (confirmed) completeProject(project.id)
   }
 
-  function findColumn(id: string): ProjectSection | null {
+  function findColumnIn(cols: Record<ProjectSection, string[]>, id: string): ProjectSection | null {
     if (id === COLUMN_DROPPABLE_ID.projects) return "projects"
     if (id === COLUMN_DROPPABLE_ID.personal) return "personal"
-    if (columns.projects.includes(id)) return "projects"
-    if (columns.personal.includes(id)) return "personal"
+    if (cols.projects.includes(id)) return "projects"
+    if (cols.personal.includes(id)) return "personal"
     return null
   }
 
-  // Moves the dragged card into the section it's currently hovering over so
-  // the list visually reflows as you drag across the Projects / Personal
-  // Projects boundary. Nothing is persisted here — see handleProjectDragEnd.
-  function handleProjectDragOver(event: DragOverEvent) {
-    const { active, over } = event
-    if (!over) return
-    const activeId = String(active.id)
-    const overId = String(over.id)
-    const activeCol = findColumn(activeId)
-    const overCol = findColumn(overId)
-    if (!activeCol || !overCol || activeCol === overCol) return
-
-    setColumns((prev) => {
-      const activeItems = prev[activeCol].filter((id) => id !== activeId)
-      const overItems = [...prev[overCol]]
-      const overIndex = overItems.indexOf(overId)
-      const insertAt = overIndex >= 0 ? overIndex : overItems.length
-      overItems.splice(insertAt, 0, activeId)
-      return { ...prev, [activeCol]: activeItems, [overCol]: overItems }
-    })
-  }
-
+  // Cross-section moves are only applied here, on drop — never mid-drag
+  // (there used to be an onDragOver handler that reparented the card into
+  // the other section's list while still dragging, which tore the card out
+  // of the SortableContext dnd-kit was actively tracking and crashed the
+  // page). While dragging, the card stays put in its own section; only its
+  // final resting section/index changes once you release it. `columns` is
+  // derived from state.projects (see above), so persisting via
+  // reorderProjects is enough — no separate local state to update here.
   function handleProjectDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (!over) return
+    if (!over || active.id === over.id) return
     const activeId = String(active.id)
     const overId = String(over.id)
-    const activeCol = findColumn(activeId)
-    if (!activeCol) return
 
-    setColumns((prev) => {
-      const items = prev[activeCol]
-      const oldIndex = items.indexOf(activeId)
-      const overCol = findColumn(overId)
-      const newIndex = overCol === activeCol && overId !== activeId ? items.indexOf(overId) : -1
-      const finalItems =
-        oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex
-          ? arrayMove(items, oldIndex, newIndex)
-          : items
-      const next = { ...prev, [activeCol]: finalItems }
-      reorderProjects("projects", next.projects)
-      reorderProjects("personal", next.personal)
-      return next
-    })
+    const activeCol = findColumnIn(columns, activeId)
+    if (!activeCol) return
+    const overCol = findColumnIn(columns, overId)
+    if (!overCol) return
+
+    const sourceItems = columns[activeCol].filter((id) => id !== activeId)
+    const destItemsBase = activeCol === overCol ? sourceItems : [...columns[overCol]]
+    const isColumnDrop = overId === COLUMN_DROPPABLE_ID[overCol]
+    const overIndex = isColumnDrop ? -1 : destItemsBase.indexOf(overId)
+    const insertAt = overIndex >= 0 ? overIndex : destItemsBase.length
+    const destItems = [...destItemsBase]
+    destItems.splice(insertAt, 0, activeId)
+
+    const next: Record<ProjectSection, string[]> =
+      activeCol === overCol
+        ? { ...columns, [activeCol]: destItems }
+        : { ...columns, [activeCol]: sourceItems, [overCol]: destItems }
+
+    reorderProjects("projects", next.projects)
+    reorderProjects("personal", next.personal)
   }
 
   return (
@@ -197,12 +188,7 @@ export default function ProjectsPage() {
           <h1 className="text-4xl font-semibold tracking-tight text-foreground">Projects</h1>
         </div>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragOver={handleProjectDragOver}
-          onDragEnd={handleProjectDragEnd}
-        >
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleProjectDragEnd}>
           <div className="mt-10 space-y-16">
             {SECTIONS.map((section) => (
               <SectionColumn
