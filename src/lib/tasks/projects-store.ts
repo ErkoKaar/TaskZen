@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client"
 
 export type Criticality = "critical" | "warning" | "on_track"
 
+export type ProjectSection = "projects" | "personal"
+
 export type Project = {
   id: string
   title: string
@@ -12,6 +14,7 @@ export type Project = {
   createdAt: number
   completedAt: number | null
   sortOrder: number
+  section: ProjectSection
 }
 
 export type ProjectTask = {
@@ -21,6 +24,7 @@ export type ProjectTask = {
   criticality: Criticality
   createdAt: number
   completedAt: number | null
+  sortOrder: number
 }
 
 export type ProjectCompletion = {
@@ -104,12 +108,13 @@ export function useProjectsStore() {
       const [projectsRes, tasksRes, completionsRes] = await Promise.all([
         supabase
           .from("projects")
-          .select("id, title, criticality, created_at, completed_at, sort_order")
+          .select("id, title, criticality, created_at, completed_at, sort_order, section")
           .order("sort_order", { ascending: true })
           .order("created_at", { ascending: true }),
         supabase
           .from("project_tasks")
-          .select("id, project_id, title, criticality, created_at, completed_at")
+          .select("id, project_id, title, criticality, created_at, completed_at, sort_order")
+          .order("sort_order", { ascending: true })
           .order("created_at", { ascending: true }),
         supabase
           .from("project_completions")
@@ -129,6 +134,7 @@ export function useProjectsStore() {
           createdAt: new Date(p.created_at).getTime(),
           completedAt: p.completed_at ? new Date(p.completed_at).getTime() : null,
           sortOrder: p.sort_order,
+          section: p.section as ProjectSection,
         }))
         .filter((p) => p.completedAt === null || p.completedAt >= cutoff)
       const liveProjectIds = new Set(projects.map((p) => p.id))
@@ -140,6 +146,7 @@ export function useProjectsStore() {
           criticality: t.criticality as Criticality,
           createdAt: new Date(t.created_at).getTime(),
           completedAt: t.completed_at ? new Date(t.completed_at).getTime() : null,
+          sortOrder: t.sort_order,
         }))
         .filter(
           (t) =>
@@ -166,48 +173,59 @@ export function useProjectsStore() {
     }
   }, [])
 
-  const addProject = useCallback((input: { title: string; criticality?: Criticality }) => {
-    const supabase = createClient()
-    const maxOrder = stateRef.current.projects.reduce((max, p) => Math.max(max, p.sortOrder), -1)
-    supabase
-      .from("projects")
-      .insert({
-        title: input.title,
-        criticality: input.criticality ?? "on_track",
-        sort_order: maxOrder + 1,
-      })
-      .select("id, title, criticality, created_at, completed_at, sort_order")
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) return console.error("Failed to add project", error)
-        setState((s) => ({
-          ...s,
-          projects: [
-            ...s.projects,
-            {
-              id: data.id,
-              title: data.title,
-              criticality: data.criticality as Criticality,
-              createdAt: new Date(data.created_at).getTime(),
-              completedAt: null,
-              sortOrder: data.sort_order,
-            },
-          ],
-        }))
-      })
-  }, [])
+  const addProject = useCallback(
+    (input: { title: string; criticality?: Criticality; section: ProjectSection }) => {
+      const supabase = createClient()
+      const maxOrder = stateRef.current.projects
+        .filter((p) => p.section === input.section)
+        .reduce((max, p) => Math.max(max, p.sortOrder), -1)
+      supabase
+        .from("projects")
+        .insert({
+          title: input.title,
+          criticality: input.criticality ?? "on_track",
+          sort_order: maxOrder + 1,
+          section: input.section,
+        })
+        .select("id, title, criticality, created_at, completed_at, sort_order, section")
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data) return console.error("Failed to add project", error)
+          setState((s) => ({
+            ...s,
+            projects: [
+              ...s.projects,
+              {
+                id: data.id,
+                title: data.title,
+                criticality: data.criticality as Criticality,
+                createdAt: new Date(data.created_at).getTime(),
+                completedAt: null,
+                sortOrder: data.sort_order,
+                section: data.section as ProjectSection,
+              },
+            ],
+          }))
+        })
+    },
+    [],
+  )
 
   const addProjectTask = useCallback(
     (projectId: string, input: { title: string; criticality?: Criticality }) => {
       const supabase = createClient()
+      const maxOrder = stateRef.current.projectTasks
+        .filter((t) => t.projectId === projectId)
+        .reduce((max, t) => Math.max(max, t.sortOrder), -1)
       supabase
         .from("project_tasks")
         .insert({
           project_id: projectId,
           title: input.title,
           criticality: input.criticality ?? "on_track",
+          sort_order: maxOrder + 1,
         })
-        .select("id, project_id, title, criticality, created_at, completed_at")
+        .select("id, project_id, title, criticality, created_at, completed_at, sort_order")
         .single()
         .then(({ data, error }) => {
           if (error || !data) return console.error("Failed to add project task", error)
@@ -222,6 +240,7 @@ export function useProjectsStore() {
                 criticality: data.criticality as Criticality,
                 createdAt: new Date(data.created_at).getTime(),
                 completedAt: null,
+                sortOrder: data.sort_order,
               },
             ],
           }))
@@ -355,25 +374,71 @@ export function useProjectsStore() {
       })
   }, [])
 
-  const reorderProjects = useCallback((orderedIds: string[]) => {
-    const previous = stateRef.current.projects
-    const byId = new Map(previous.map((p) => [p.id, p]))
-    const reordered = orderedIds
+  // orderedIds is the full new order for one done/pending group within a
+  // single project (see reorderProjects for the parallel project-level
+  // logic). Tasks in the other group, or in other projects, are untouched.
+  const reorderProjectTasks = useCallback((orderedIds: string[]) => {
+    const previous = stateRef.current.projectTasks
+    const byId = new Map(previous.map((t) => [t.id, t]))
+    const updates = orderedIds
       .map((id, index) => {
-        const project = byId.get(id)
-        return project ? { ...project, sortOrder: index } : null
+        const task = byId.get(id)
+        return task ? { ...task, sortOrder: index } : null
       })
-      .filter((p): p is Project => p !== null)
+      .filter((t): t is ProjectTask => t !== null)
+    const updatesById = new Map(updates.map((t) => [t.id, t]))
 
-    setState((s) => ({ ...s, projects: reordered }))
+    setState((s) => ({
+      ...s,
+      projectTasks: s.projectTasks.map((t) => updatesById.get(t.id) ?? t),
+    }))
 
     const supabase = createClient()
     Promise.all(
-      reordered.map((p) => supabase.from("projects").update({ sort_order: p.sortOrder }).eq("id", p.id)),
+      updates.map((t) => supabase.from("project_tasks").update({ sort_order: t.sortOrder }).eq("id", t.id)),
+    ).then((results) => {
+      if (results.some((r) => r.error)) {
+        console.error("Failed to save task order")
+        setState((s) => ({
+          ...s,
+          projectTasks: s.projectTasks.map((t) => (updatesById.has(t.id) ? byId.get(t.id)! : t)),
+        }))
+      }
+    })
+  }, [])
+
+  // orderedIds is the full new order for one section (e.g. after a
+  // same-section reorder, or after a project was dragged into this section
+  // from the other one). Every id in it is assigned this section and a
+  // sequential sortOrder; projects in the other section are untouched.
+  const reorderProjects = useCallback((section: ProjectSection, orderedIds: string[]) => {
+    const previous = stateRef.current.projects
+    const byId = new Map(previous.map((p) => [p.id, p]))
+    const updates = orderedIds
+      .map((id, index) => {
+        const project = byId.get(id)
+        return project ? { ...project, section, sortOrder: index } : null
+      })
+      .filter((p): p is Project => p !== null)
+    const updatesById = new Map(updates.map((p) => [p.id, p]))
+
+    setState((s) => ({
+      ...s,
+      projects: s.projects.map((p) => updatesById.get(p.id) ?? p),
+    }))
+
+    const supabase = createClient()
+    Promise.all(
+      updates.map((p) =>
+        supabase.from("projects").update({ section: p.section, sort_order: p.sortOrder }).eq("id", p.id),
+      ),
     ).then((results) => {
       if (results.some((r) => r.error)) {
         console.error("Failed to save project order")
-        setState((s) => ({ ...s, projects: previous }))
+        setState((s) => ({
+          ...s,
+          projects: s.projects.map((p) => (updatesById.has(p.id) ? byId.get(p.id)! : p)),
+        }))
       }
     })
   }, [])
@@ -431,6 +496,7 @@ export function useProjectsStore() {
     addProjectTask,
     setTaskCriticality,
     toggleTaskDone,
+    reorderProjectTasks,
     deleteProjectTask,
   }
 }

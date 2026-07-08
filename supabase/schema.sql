@@ -197,7 +197,11 @@ create table if not exists projects (
   -- (client-side sweep on load, see projects-store.ts).
   completed_at timestamptz,
   -- Drag-and-drop display order (see reorderProjects in projects-store.ts).
-  sort_order integer not null default 0
+  sort_order integer not null default 0,
+  -- Which top-level section the project is grouped under on the Projects
+  -- page. Projects can be dragged between sections (see reorderProjects).
+  section text not null default 'projects'
+    check (section in ('projects', 'personal'))
 );
 
 create table if not exists project_tasks (
@@ -208,8 +212,17 @@ create table if not exists project_tasks (
   criticality text not null default 'on_track'
     check (criticality in ('critical', 'warning', 'on_track')),
   created_at timestamptz not null default now(),
-  completed_at timestamptz
+  completed_at timestamptz,
+  -- Drag-and-drop display order within a project (see reorderProjectTasks in
+  -- projects-store.ts). Done/pending tasks are ordered independently within
+  -- their own group, not against each other.
+  sort_order integer not null default 0
 );
+
+-- Backfill for installs that ran this schema before these columns existed.
+alter table projects add column if not exists section text not null default 'projects'
+  check (section in ('projects', 'personal'));
+alter table project_tasks add column if not exists sort_order integer not null default 0;
 
 -- Permanent completion log for *projects* (not project_tasks). Written the
 -- moment a project is ticked done, independent of the live `projects` row's
