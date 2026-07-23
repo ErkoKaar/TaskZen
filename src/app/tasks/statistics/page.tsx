@@ -4,10 +4,11 @@ import { useMemo, useState } from "react"
 import Image from "next/image"
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import {
+  applicableLeafHabits,
+  childrenOf,
   fmtDate,
   fmtShort,
   getRange,
-  isHabitApplicable,
   parseDate,
   useStore,
 } from "@/lib/tasks/store"
@@ -37,8 +38,9 @@ export default function StatisticsPage() {
     const weekdayShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const date = fmtDate(d)
-      // Only count habits that existed (and weren't yet archived) on this day.
-      const applicableHabits = state.habits.filter((h) => isHabitApplicable(h, date))
+      // Only count leaf habits that existed (and weren't yet archived) on this
+      // day — parents are grouping rows, their children carry the checks.
+      const applicableHabits = applicableLeafHabits(state.habits, date)
       const habitsDone = applicableHabits.filter(
         (h) => !!state.habitLogs[`${h.id}:${date}`],
       ).length
@@ -60,19 +62,27 @@ export default function StatisticsPage() {
     return { dayData: days, completedTasks }
   }, [range, state, view])
 
-  const habitChecksInRange = useMemo(
-    () =>
-      Object.keys(state.habitLogs).filter((k) => {
-        const date = k.split(":")[1]
-        return date ? inRange(date) : false
-      }),
-    [state.habitLogs, range],
-  )
+  // Count only logs belonging to leaf habits — the same set `possible` counts.
+  // A habit that has since become a parent keeps its old log rows in the DB,
+  // but those no longer count as habit completions (the parent is a grouping;
+  // its children carry the checks). Keeping numerator and denominator on the
+  // same set stops completion % from being skewed after a habit is nested.
+  const habitChecksInRange = useMemo(() => {
+    const leafIds = new Set(
+      state.habits.filter((h) => childrenOf(h.id, state.habits).length === 0).map((h) => h.id),
+    )
+    return Object.keys(state.habitLogs).filter((k) => {
+      const [habitId, date] = k.split(":")
+      return leafIds.has(habitId) && !!date && inRange(date)
+    })
+  }, [state.habitLogs, state.habits, range])
 
-  // For each habit, only count the days within range it was actually active for —
-  // a habit created on Wednesday couldn't have been done on Monday/Tuesday, and
-  // an archived habit's history stops counting toward future days.
-  const possible = state.habits.reduce((sum, h) => {
+  // For each leaf habit (parents don't carry checks), only count the days
+  // within range it was actually active for — a habit created on Wednesday
+  // couldn't have been done on Monday/Tuesday, and an archived habit's history
+  // stops counting toward future days.
+  const leafHabits = state.habits.filter((h) => childrenOf(h.id, state.habits).length === 0)
+  const possible = leafHabits.reduce((sum, h) => {
     const createdDate = parseDate(fmtDate(new Date(h.createdAt)))
     const effectiveStart = createdDate > range.start ? createdDate : range.start
     const archivedDate = h.archivedAt ? parseDate(fmtDate(new Date(h.archivedAt))) : null
@@ -122,7 +132,7 @@ export default function StatisticsPage() {
             <KPI label="Tasks completed" value={`${completedTasks.length}`} />
             <KPI
               label="Active habits"
-              value={`${state.habits.filter((h) => !h.archivedAt).length}`}
+              value={`${state.habits.filter((h) => !h.archivedAt && !h.parentId).length}`}
               hint="tracked"
             />
             <KPI

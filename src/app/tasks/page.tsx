@@ -4,7 +4,9 @@ import { useMemo, useState } from "react"
 import Image from "next/image"
 import { ChevronLeft, ChevronRight, Flame, Trash2 } from "lucide-react"
 import {
-  computeStreak,
+  applicableLeafHabits,
+  childrenOf,
+  computeHabitStreak,
   fmtDate,
   fmtDayLabel,
   fmtMonthYear,
@@ -16,7 +18,7 @@ import {
 import { SiteHeader } from "@/components/site-header"
 import { TasksNavTabs } from "@/components/tasks/nav-tabs"
 import { ViewTabs, type ViewKey } from "@/components/tasks/view-tabs"
-import { CheckBox } from "@/components/tasks/check-box"
+import { CheckBox, DerivedCheckBox } from "@/components/tasks/check-box"
 import { GhostInput } from "@/components/tasks/ghost-input"
 import { cn } from "@/lib/utils"
 
@@ -43,11 +45,16 @@ export default function TasksPage() {
   const today = fmtDate(new Date())
   const selected = fmtDate(selectedDate)
   const selectedTasks = state.tasks.filter((t) => t.date === selected)
-  const selectedHabits = state.habits.filter((h) => isHabitApplicable(h, selected))
+  // Top-level habits for display (children nest under their parent).
+  const selectedHabits = state.habits.filter(
+    (h) => isHabitApplicable(h, selected) && !h.parentId,
+  )
+  // Leaf habits for counting — each sub-habit / childless habit is one slot.
+  const selectedLeaves = applicableLeafHabits(state.habits, selected)
   const doneCount =
     selectedTasks.filter((t) => t.done).length +
-    selectedHabits.filter((h) => !!state.habitLogs[`${h.id}:${selected}`]).length
-  const totalCount = selectedTasks.length + selectedHabits.length
+    selectedLeaves.filter((h) => !!state.habitLogs[`${h.id}:${selected}`]).length
+  const totalCount = selectedTasks.length + selectedLeaves.length
   const pct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
 
   return (
@@ -98,24 +105,13 @@ export default function TasksPage() {
               {selectedHabits.length > 0 && (
                 <>
                   <SectionLabel>Habits</SectionLabel>
-                  <div className="divide-y divide-border">
-                    {selectedHabits.map((h) => {
-                      const done = !!state.habitLogs[`${h.id}:${selected}`]
-                      const streak = computeStreak(h.id, state.habitLogs, h.createdAt)
-                      return (
-                        <div key={h.id} className="flex items-center gap-4 py-5">
-                          <CheckBox checked={done} onClick={() => toggleHabit(h.id, selected)} />
-                          <span className={cn("flex-1 text-lg", done && "text-muted-foreground line-through")}>
-                            {h.name}
-                          </span>
-                          <span className="flex items-center gap-1 text-sm tabular-nums text-muted-foreground">
-                            <Flame className="h-4 w-4 text-[color:var(--chart-1)]" />
-                            {streak}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <HabitList
+                    topHabits={selectedHabits}
+                    state={state}
+                    dateStr={selected}
+                    onToggle={(id) => toggleHabit(id, selected)}
+                    showStreak
+                  />
                 </>
               )}
 
@@ -206,6 +202,80 @@ function SectionLabel({ children, className }: { children: React.ReactNode; clas
   )
 }
 
+// Renders top-level habits with their sub-habits nested underneath. A parent
+// shows a read-only derived checkbox (empty/partial/full); leaves and children
+// show a normal toggle. Used by both the week view and the month DaySection.
+function HabitList({
+  topHabits,
+  state,
+  dateStr,
+  onToggle,
+  showStreak = false,
+}: {
+  topHabits: ReturnType<typeof useStore>["state"]["habits"]
+  state: ReturnType<typeof useStore>["state"]
+  dateStr: string
+  onToggle: (habitId: string) => void
+  showStreak?: boolean
+}) {
+  return (
+    <div className="divide-y divide-border">
+      {topHabits.map((h) => {
+        const kids = childrenOf(h.id, state.habits).filter((c) =>
+          isHabitApplicable(c, dateStr),
+        )
+        const isParent = kids.length > 0
+        const doneKids = kids.filter((c) => !!state.habitLogs[`${c.id}:${dateStr}`]).length
+        const done = isParent
+          ? doneKids === kids.length
+          : !!state.habitLogs[`${h.id}:${dateStr}`]
+        return (
+          <div key={h.id} className="py-2">
+            <div className="flex items-center gap-4 py-3">
+              {isParent ? (
+                <DerivedCheckBox
+                  state={doneKids === 0 ? "empty" : done ? "full" : "partial"}
+                />
+              ) : (
+                <CheckBox checked={done} onClick={() => onToggle(h.id)} />
+              )}
+              <span className={cn("flex-1 text-lg", done && "text-muted-foreground line-through")}>
+                {h.name}
+              </span>
+              {showStreak && (
+                <span className="flex items-center gap-1 text-sm tabular-nums text-muted-foreground">
+                  <Flame className="h-4 w-4 text-[color:var(--chart-1)]" />
+                  {computeHabitStreak(h, state.habits, state.habitLogs)}
+                </span>
+              )}
+            </div>
+            {isParent && (
+              <div className="ml-10 flex flex-col">
+                {kids.map((c) => {
+                  const childDone = !!state.habitLogs[`${c.id}:${dateStr}`]
+                  return (
+                    <div key={c.id} className="flex items-center gap-3 py-2">
+                      <CheckBox checked={childDone} onClick={() => onToggle(c.id)} />
+                      <span
+                        className={cn(
+                          "flex-1 text-base",
+                          childDone && "text-muted-foreground line-through",
+                        )}
+                      >
+                        {c.name}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function PeriodSummary({
   label,
   days,
@@ -224,7 +294,7 @@ function PeriodSummary({
     const dayTasks = state.tasks.filter((t) => t.date === date)
     tasksDone += dayTasks.filter((t) => t.done).length
     tasksTotal += dayTasks.length
-    const dayHabits = state.habits.filter((h) => isHabitApplicable(h, date))
+    const dayHabits = applicableLeafHabits(state.habits, date)
     habitSlots += dayHabits.length
     habitChecks += dayHabits.filter((h) => !!state.habitLogs[`${h.id}:${date}`]).length
   }
@@ -292,7 +362,7 @@ function WeekStrip({
       {days.map((day) => {
         const date = fmtDate(day)
         const dayTasks = state.tasks.filter((t) => t.date === date)
-        const dayHabits = state.habits.filter((h) => isHabitApplicable(h, date))
+        const dayHabits = applicableLeafHabits(state.habits, date)
         const done =
           dayTasks.filter((t) => t.done).length +
           dayHabits.filter((h) => !!state.habitLogs[`${h.id}:${date}`]).length
@@ -352,11 +422,13 @@ function DaySection({
   const [open, setOpen] = useState(false)
 
   const tasks = state.tasks.filter((t) => t.date === dateStr)
-  const habits = state.habits.filter((h) => isHabitApplicable(h, dateStr))
+  // Top-level habits for display; leaves for the done/total count.
+  const habits = state.habits.filter((h) => isHabitApplicable(h, dateStr) && !h.parentId)
+  const leaves = applicableLeafHabits(state.habits, dateStr)
   const done =
     tasks.filter((t) => t.done).length +
-    habits.filter((h) => !!state.habitLogs[`${h.id}:${dateStr}`]).length
-  const total = tasks.length + habits.length
+    leaves.filter((h) => !!state.habitLogs[`${h.id}:${dateStr}`]).length
+  const total = tasks.length + leaves.length
 
   return (
     <div className="border-b border-border">
@@ -383,19 +455,12 @@ function DaySection({
       {open && (
         <div className="pb-5 pl-1">
           {habits.length > 0 && (
-            <div className="divide-y divide-border">
-              {habits.map((h) => {
-                const habitDone = !!state.habitLogs[`${h.id}:${dateStr}`]
-                return (
-                  <div key={h.id} className="flex items-center gap-4 py-5">
-                    <CheckBox checked={habitDone} onClick={() => onToggleHabit(h.id)} />
-                    <span className={cn("flex-1 text-lg", habitDone && "text-muted-foreground line-through")}>
-                      {h.name}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
+            <HabitList
+              topHabits={habits}
+              state={state}
+              dateStr={dateStr}
+              onToggle={onToggleHabit}
+            />
           )}
           <div className={cn("divide-y divide-border", habits.length > 0 && "border-t border-border")}>
             {tasks.map((t) => (

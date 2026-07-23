@@ -71,8 +71,18 @@ create table if not exists habits (
   -- Soft-delete: set when a habit is archived. While set, the habit is
   -- hidden from the active list and from future days, but its history
   -- (habit_logs, statistics) stays intact. Null = active.
-  archived_at timestamptz
+  archived_at timestamptz,
+  -- Sub-habits: a habit with parent_id set is a child of another habit.
+  -- Parents are never logged directly — a parent's daily "done" state is
+  -- derived (all its children logged that day). One level only: a child
+  -- never has children of its own. on delete cascade so deleting a parent
+  -- removes its children (and their habit_logs cascade in turn).
+  parent_id uuid references habits(id) on delete cascade
 );
+
+-- Backfill for installs that ran this schema before sub-habits existed.
+alter table habits add column if not exists parent_id uuid references habits(id) on delete cascade;
+create index if not exists habits_parent_id_idx on habits (parent_id);
 
 create table if not exists habit_logs (
   habit_id uuid not null references habits(id) on delete cascade,
