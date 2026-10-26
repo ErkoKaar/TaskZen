@@ -1,14 +1,29 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Image from "next/image"
-import { useFocusTimer } from "@/lib/focusloop/timer-store"
+import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 
 // Covers the gap between the JS bundle finishing load and the initial
 // auth/session handshake resolving — otherwise a cold PWA start shows a
 // blank or half-loaded page for a few seconds.
 export function AppSplash() {
-  const { ready } = useFocusTimer()
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    // Hide the splash even if the handshake fails, so it can never get stuck.
+    createClient()
+      .auth.getUser()
+      .catch((err) => console.error("Failed to resolve auth session", err))
+      .finally(() => {
+        if (active) setReady(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <div

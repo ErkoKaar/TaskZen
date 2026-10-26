@@ -11,7 +11,6 @@ import { createClient } from "@/lib/supabase/client"
 
 const APPS = [
   { id: "taskmanager", label: "Task Manager", href: "/tasks" },
-  { id: "focusloop", label: "FocusLoop", href: "/focus" },
 ]
 
 export function AppSwitcher() {

@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Martian_Mono } from "next/font/google";
 import { RegisterServiceWorker } from "@/components/register-service-worker";
 import { AppSplash } from "@/components/app-splash";
-import { FocusTimerProvider } from "@/lib/focusloop/timer-store";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -18,7 +17,7 @@ const martianMono = Martian_Mono({
 
 export const metadata: Metadata = {
   title: "TaskZen",
-  description: "Focus timer and task/habit manager.",
+  description: "Task and habit manager.",
   icons: {
     icon: [
       {
@@ -71,10 +70,8 @@ export default function RootLayout({
           }}
         />
         <RegisterServiceWorker />
-        <FocusTimerProvider>
-          <AppSplash />
-          {children}
-        </FocusTimerProvider>
+        <AppSplash />
+        {children}
       </body>
     </html>
   );
