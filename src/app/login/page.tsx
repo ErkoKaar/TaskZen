@@ -1,5 +1,4 @@
 import Image from "next/image"
-import Link from "next/link"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { signIn } from "@/lib/auth/actions"
@@ -7,13 +6,13 @@ import { signIn } from "@/lib/auth/actions"
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; registered?: string }>
+  searchParams: Promise<{ error?: string }>
 }) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
   if (data.user) redirect("/tasks")
 
-  const { error, registered } = await searchParams
+  const { error } = await searchParams
 
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-8 px-4">
@@ -31,14 +30,9 @@ export default async function LoginPage({
           Welcome back. Enter your details below.
         </p>
 
-        {registered && (
-          <p className="mt-4 rounded-lg bg-accent px-3 py-2 text-sm text-foreground">
-            Account created. You can log in now.
-          </p>
-        )}
         {error && (
           <p className="mt-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
+            Invalid username or password.
           </p>
         )}
 
@@ -77,13 +71,6 @@ export default async function LoginPage({
           </button>
         </form>
       </div>
-
-      <p className="text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link href="/register" className="font-medium text-primary hover:underline">
-          Register
-        </Link>
-      </p>
     </div>
   )
 }

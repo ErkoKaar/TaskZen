@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 
 export type Criticality = "critical" | "warning" | "on_track"
@@ -52,7 +52,11 @@ const RETENTION_MS = 24 * 60 * 60 * 1000
 export function useProjectsStore() {
   const [state, setState] = useState<ProjectsStoreState>(initialState)
   const stateRef = useRef(state)
-  stateRef.current = state
+  // Keep the ref in sync after each commit (not during render), so callbacks
+  // always read the latest state without re-creating them.
+  useLayoutEffect(() => {
+    stateRef.current = state
+  })
 
   useEffect(() => {
     let active = true

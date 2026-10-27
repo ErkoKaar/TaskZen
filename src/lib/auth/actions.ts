@@ -4,14 +4,16 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-const INVALID_CREDENTIALS = "Invalid username or password."
+// Every failure gets the same flag: the login page shows one fixed message,
+// so the URL can't be used to put arbitrary text on the page.
+const LOGIN_FAILED = "/login?error=1"
 
 export async function signIn(formData: FormData) {
   const username = (formData.get("username") as string | null)?.trim().toLowerCase()
   const password = formData.get("password") as string
 
   if (!username) {
-    redirect(`/login?error=${encodeURIComponent(INVALID_CREDENTIALS)}`)
+    redirect(LOGIN_FAILED)
   }
 
   const admin = createAdminClient()
@@ -22,14 +24,14 @@ export async function signIn(formData: FormData) {
     .maybeSingle()
 
   if (!profile) {
-    redirect(`/login?error=${encodeURIComponent(INVALID_CREDENTIALS)}`)
+    redirect(LOGIN_FAILED)
   }
 
   const { data: userRes, error: userError } = await admin.auth.admin.getUserById(
     profile.id,
   )
   if (userError || !userRes.user?.email) {
-    redirect(`/login?error=${encodeURIComponent(INVALID_CREDENTIALS)}`)
+    redirect(LOGIN_FAILED)
   }
 
   const supabase = await createClient()
@@ -39,46 +41,9 @@ export async function signIn(formData: FormData) {
   })
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent(INVALID_CREDENTIALS)}`)
+    redirect(LOGIN_FAILED)
   }
   redirect("/tasks")
-}
-
-export async function signUp(formData: FormData) {
-  const username = (formData.get("username") as string | null)?.trim().toLowerCase()
-  const email = formData.get("email") as string
-  const password = formData.get("password") as string
-
-  if (!username) {
-    redirect(`/register?error=${encodeURIComponent("Username is required.")}`)
-  }
-
-  const supabase = await createClient()
-  const { data, error } = await supabase.auth.signUp({ email, password })
-
-  if (error || !data.user) {
-    redirect(
-      `/register?error=${encodeURIComponent(error?.message ?? "Could not create account.")}`,
-    )
-  }
-
-  const admin = createAdminClient()
-  const { error: profileError } = await admin
-    .from("profiles")
-    .insert({ id: data.user.id, username })
-
-  if (profileError) {
-    // Keep registration all-or-nothing: don't leave an orphaned auth user
-    // behind if the username turned out to be taken.
-    await admin.auth.admin.deleteUser(data.user.id)
-    const message =
-      profileError.code === "23505"
-        ? "That username is already taken."
-        : "Could not create account."
-    redirect(`/register?error=${encodeURIComponent(message)}`)
-  }
-
-  redirect("/login?registered=1")
 }
 
 export async function signOut() {
