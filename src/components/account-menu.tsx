@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useId, useRef, useState } from "react"
-import { LogOut, User } from "lucide-react"
+import { LogOut, RotateCcw, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { signOut } from "@/lib/auth/actions"
+import { IS_DEMO } from "@/lib/demo/mode"
+import { resetDemoData } from "@/lib/demo/client"
 import { createClient } from "@/lib/supabase/client"
 
 export function AccountMenu() {
@@ -80,15 +82,29 @@ export function AccountMenu() {
               <div className="my-1 border-t border-border" />
             </>
           )}
-          <form action={signOut}>
+          {IS_DEMO ? (
             <button
-              type="submit"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-destructive"
+              type="button"
+              onClick={() => {
+                resetDemoData()
+                window.location.reload()
+              }}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
-              <LogOut className="h-4 w-4" />
-              Sign out
+              <RotateCcw className="h-4 w-4" />
+              Reset demo data
             </button>
-          </form>
+          ) : (
+            <form action={signOut}>
+              <button
+                type="submit"
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-destructive"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </button>
+            </form>
+          )}
         </div>
       )}
     </div>

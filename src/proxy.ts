@@ -1,7 +1,16 @@
-import { type NextRequest } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
+import { IS_DEMO } from "@/lib/demo/mode"
 import { updateSession } from "@/lib/supabase/middleware"
 
 export async function proxy(request: NextRequest) {
+  if (IS_DEMO) {
+    // The demo has no accounts, so the auth pages have nothing to show.
+    const { pathname } = request.nextUrl
+    if (pathname === "/login" || pathname === "/register") {
+      return NextResponse.redirect(new URL("/tasks", request.url))
+    }
+    return NextResponse.next()
+  }
   return await updateSession(request)
 }
 

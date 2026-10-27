@@ -1,12 +1,18 @@
 import Image from "next/image"
 import Link from "next/link"
 import { AccountMenu } from "@/components/account-menu"
+import { IS_DEMO } from "@/lib/demo/mode"
 
 // Brand left, page tabs centred, account menu right. Below sm the grid
 // collapses to a row: logo, then tabs dropdown and account button.
 export function SiteHeader({ children }: { children?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
+      {IS_DEMO && (
+        <p className="border-b border-border bg-primary/10 px-4 py-1.5 text-center text-xs text-muted-foreground">
+          Demo with sample data. Your changes are saved in this browser only.
+        </p>
+      )}
       <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-5 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:px-6 sm:py-3">
         <Link
           href="/tasks"
