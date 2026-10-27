@@ -22,3 +22,7 @@ After 15 user messages have accumulated in a single chat, summarize everything d
 
 Write code like a senior developer: think through edge cases, failure modes, and invalid inputs before considering the task done, not just the happy path.
 
+# README policy
+
+The repo is public and README.md is its front page. After a larger change (a feature, page or route added or removed, setup steps, environment variables, database schema, tech stack or project structure), check README.md before calling the work done and update every part it no longer describes correctly: feature list, screenshots, setup steps, env var table, project structure. Include those README edits in the plan. Retake outdated screenshots from the demo build (`NEXT_PUBLIC_DEMO_MODE=1`), never from real data.
+
