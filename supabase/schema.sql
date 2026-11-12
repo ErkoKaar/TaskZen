@@ -61,11 +61,26 @@ alter table habit_logs enable row level security;
 create policy "Users manage their own tasks" on tasks
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-create policy "Users manage their own habits" on habits
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- Referenced rows must belong to the same user too: checking user_id alone
+-- would let a signed-in user attach rows to someone else's habit or project
+-- by its UUID. A policy on habits can't query habits itself (infinite
+-- recursion), so the parent check goes through a security definer helper.
+create or replace function public.owns_habit(hid uuid) returns boolean
+  language sql stable security definer set search_path = ''
+as $$
+  select exists (select 1 from public.habits where id = hid and user_id = auth.uid());
+$$;
 
+drop policy if exists "Users manage their own habits" on habits;
+create policy "Users manage their own habits" on habits
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id and (parent_id is null or public.owns_habit(parent_id)));
+
+drop policy if exists "Users manage their own habit_logs" on habit_logs;
 create policy "Users manage their own habit_logs" on habit_logs
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id and exists (
+    select 1 from habits h where h.id = habit_logs.habit_id and h.user_id = auth.uid()));
 
 -- Projects schema: a separate, project-based task model — independent of
 -- the date-based `tasks` table used by daily Tasks/Habits. Both projects
@@ -133,10 +148,16 @@ alter table project_completions enable row level security;
 create policy "Users manage their own projects" on projects
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "Users manage their own project_tasks" on project_tasks;
 create policy "Users manage their own project_tasks" on project_tasks
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id and exists (
+    select 1 from projects p where p.id = project_tasks.project_id and p.user_id = auth.uid()));
 
+drop policy if exists "Users manage their own project_completions" on project_completions;
 create policy "Users manage their own project_completions" on project_completions
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id and (project_completions.project_id is null or exists (
+    select 1 from projects p where p.id = project_completions.project_id and p.user_id = auth.uid())));
 
 create index if not exists project_tasks_project_id_idx on project_tasks (project_id);
